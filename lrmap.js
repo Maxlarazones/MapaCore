@@ -1,632 +1,569 @@
 /* ==========================================================================
-   LRMap v1 — base cartográfica reutilizable (La Razón)
-   Requiere Leaflet 1.9.x cargado antes que este archivo.
+   LRMap v2 — base cartográfica La Razón
+   Cartografía propia. Sin tiles, sin proveedor, sin clave, sin cuota.
 
-   Filosofía: este módulo NO sabe nada de incendios, tráfico ni AEMET.
-   Sólo sabe de: encuadre España, basemaps, chrome, estados, selección,
-   deep-link y embebido. Cada proyecto le entrega GeoJSON normalizado y,
-   opcionalmente, cómo pintarlo.
+   Tres decisiones que lo separan de un mapa web cualquiera:
+   1. Proyección cónica conforme de Lambert calibrada para España (37°/43°),
+      la familia que usa el IGN. España tiene su forma real, no la estirada
+      de Mercator.
+   2. Cartografía vectorial propia de 19 KB, con topónimos en español.
+   3. Canarias en recuadro, a escala, como en el mapa impreso.
+
+   Requiere Leaflet 1.9.x.
    ========================================================================== */
 
 (function (global) {
   'use strict';
 
-  // — Encuadres frecuentes. Evita que cada proyecto reinvente coordenadas —
-  var ENCUADRES = {
-    espana:     { centro: [40.1, -3.6],  zoom: 5.6, limites: [[35.6, -19.5], [44.2, 5.1]] },
-    peninsula:  { centro: [40.2, -3.7],  zoom: 6.2, limites: [[35.8, -9.8],  [43.9, 3.5]] },
-    canarias:   { centro: [28.4, -15.9], zoom: 7.6, limites: [[27.5, -18.4], [29.5, -13.3]] },
-    baleares:   { centro: [39.6,  2.9],  zoom: 8.4, limites: [[38.5,  1.1],  [40.2, 4.4]] },
-    madrid:     { centro: [40.42, -3.70],zoom: 10.5,limites: [[39.85, -4.6], [41.2, -3.0]] }
+  var L = global.L;
+
+  // =========================================================================
+  // 1. Proyección: cónica conforme de Lambert para España
+  // =========================================================================
+
+  var R = 6378137, rad = Math.PI / 180;
+  var LAT1 = 37 * rad, LAT2 = 43 * rad, LAT0 = 40 * rad, LON0 = -3 * rad;
+
+  function tg(p) { return Math.tan(Math.PI / 4 + p / 2); }
+
+  var N = Math.log(Math.cos(LAT1) / Math.cos(LAT2)) / Math.log(tg(LAT2) / tg(LAT1));
+  var FF = Math.cos(LAT1) * Math.pow(tg(LAT1), N) / N;
+  var RHO0 = R * FF / Math.pow(tg(LAT0), N);
+  var MUNDO = 20037508.342789244;   // mantiene los niveles de zoom familiares
+
+  var ProyeccionEspana = {
+    project: function (latlng) {
+      var p = Math.max(-1.4835, Math.min(1.4835, latlng.lat * rad));
+      var rho = R * FF / Math.pow(tg(p), N);
+      var th = N * (latlng.lng * rad - LON0);
+      return new L.Point(rho * Math.sin(th), RHO0 - rho * Math.cos(th));
+    },
+    unproject: function (punto) {
+      var dy = RHO0 - punto.y;
+      var rho = (N < 0 ? -1 : 1) * Math.sqrt(punto.x * punto.x + dy * dy);
+      var th = Math.atan2(punto.x, dy);
+      var lat = 2 * Math.atan(Math.pow(R * FF / rho, 1 / N)) - Math.PI / 2;
+      return new L.LatLng(lat / rad, (LON0 + th / N) / rad);
+    },
+    bounds: L.bounds([-MUNDO, -MUNDO], [MUNDO, MUNDO])
   };
 
-  // — Capas base. CARTO no pide clave; IGN es la red de seguridad soberana —
-  var BASEMAPS = {
-    lienzo: {
-      fondo: 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',
-      etiquetas: 'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png',
-      subdominios: 'abcd', maxZoom: 19,
-      atribucion: '<a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://carto.com/attributions">CARTO</a>'
-    },
-    lienzoNoche: {
-      fondo: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
-      etiquetas: 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',
-      subdominios: 'abcd', maxZoom: 19,
-      atribucion: '<a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://carto.com/attributions">CARTO</a>'
-    },
-    ign: {
-      fondo: 'https://www.ign.es/wmts/ign-base?layer=IGNBaseTodo&style=default&tilematrixset=GoogleMapsCompatible&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image/jpeg&TileMatrix={z}&TileCol={x}&TileRow={y}',
-      etiquetas: null, subdominios: '', maxZoom: 18,
-      atribucion: '<a href="https://www.ign.es">Instituto Geográfico Nacional</a>'
-    },
-    satelite: {
-      fondo: 'https://www.ign.es/wmts/pnoa-ma?layer=OI.OrthoimageCoverage&style=default&tilematrixset=GoogleMapsCompatible&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image/jpeg&TileMatrix={z}&TileCol={x}&TileRow={y}',
-      etiquetas: 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',
-      subdominios: 'abcd', maxZoom: 19,
-      atribucion: 'PNOA © <a href="https://www.ign.es">IGN</a> · etiquetas CARTO'
+  var CRS_ESPANA = L.extend({}, L.CRS.Earth, {
+    code: 'LR:ES-LCC',
+    projection: ProyeccionEspana,
+    transformation: new L.Transformation(1 / (2 * MUNDO), 0.5, -1 / (2 * MUNDO), 0.5)
+  });
+
+  // — Canarias: el mismo desplazamiento que aplicó el preproceso —
+  var CANARIAS = { dlat: 6.90, dlon: 4.20, bbox: [-18.6, 27.4, -13.2, 29.6] };
+
+  function enCanarias(lng, lat) {
+    return lng >= CANARIAS.bbox[0] && lng <= CANARIAS.bbox[2] &&
+           lat >= CANARIAS.bbox[1] && lat <= CANARIAS.bbox[3];
+  }
+
+  /** Reubica en el recuadro las geometrías que caen en Canarias. */
+  function moverCanarias(geojson) {
+    function mover(c) {
+      if (typeof c[0] === 'number') {
+        return enCanarias(c[0], c[1]) ? [c[0] + CANARIAS.dlon, c[1] + CANARIAS.dlat] : c;
+      }
+      return c.map(mover);
     }
-  };
-
-  var ICONOS = {
-    mas:    '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
-    menos:  '<svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>',
-    inicio: '<svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>',
-    yo:     '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>',
-    capas:  '<svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>',
-    pleno:  '<svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>'
-  };
-
-  function crearElemento(etiqueta, clase, html) {
-    var el = document.createElement(etiqueta);
-    if (clase) el.className = clase;
-    if (html != null) el.innerHTML = html;
-    return el;
+    var copia = JSON.parse(JSON.stringify(geojson));
+    (copia.features || [copia]).forEach(function (f) {
+      if (f.geometry && f.geometry.coordinates) f.geometry.coordinates = mover(f.geometry.coordinates);
+    });
+    return copia;
   }
 
-  function esMovil() {
-    return window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+  // =========================================================================
+  // 2. Encuadres
+  // =========================================================================
+
+  var ENCUADRES = {
+    espana:    { limites: [[34.0, -14.6], [44.0, 4.6]] },
+    peninsula: { limites: [[35.8, -9.8],  [43.9, 3.5]] },
+    canarias:  { limites: [[34.2, -14.4], [36.6, -8.8]] },   // ya desplazadas
+    baleares:  { limites: [[38.5, 1.1],   [40.2, 4.4]] },
+    madrid:    { limites: [[39.9, -4.6],  [41.2, -3.0]] }
+  };
+
+  // =========================================================================
+  // 3. Utilidades
+  // =========================================================================
+
+  function el(etiqueta, clase, html) {
+    var e = document.createElement(etiqueta);
+    if (clase) e.className = clase;
+    if (html != null) e.innerHTML = html;
+    return e;
   }
 
-  function formatearFecha(iso) {
+  function fecha(iso, conHora) {
     if (!iso) return '';
     var d = new Date(iso);
     if (isNaN(d)) return '';
-    return new Intl.DateTimeFormat('es-ES', {
-      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-      timeZone: 'Europe/Madrid'
-    }).format(d).replace('.', '');
+    var o = { day: 'numeric', month: 'long', timeZone: 'Europe/Madrid' };
+    if (conHora !== false) { o.hour = '2-digit'; o.minute = '2-digit'; }
+    return new Intl.DateTimeFormat('es-ES', o).format(d);
   }
 
-  // ==========================================================================
-  // Constructor
-  // ==========================================================================
+  function numero(n) {
+    return typeof n === 'number' ? new Intl.NumberFormat('es-ES').format(n) : n;
+  }
 
-  function LRMap(opciones) {
-    var o = this.opciones = Object.assign({
+  function escapar(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  var ICONO = {
+    mas:   '<svg viewBox="0 0 20 20"><path d="M10 4.2v11.6M4.2 10h11.6"/></svg>',
+    menos: '<svg viewBox="0 0 20 20"><path d="M4.2 10h11.6"/></svg>',
+    todo:  '<svg viewBox="0 0 20 20"><path d="M7.4 3.2H3.2v4.2M12.6 3.2h4.2v4.2M7.4 16.8H3.2v-4.2M12.6 16.8h4.2v-4.2"/></svg>',
+    yo:    '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.5"/><path d="M10 2.2v2.6M10 15.2v2.6M2.2 10h2.6M15.2 10h2.6"/></svg>'
+  };
+
+  // =========================================================================
+  // 4. Constructor
+  // =========================================================================
+
+  function LRMap(op) {
+    var o = this.op = Object.assign({
       el: null,
       titulo: '',
-      subtitulo: '',
-      fuente: null,                 // { texto, url }
-      actualizado: null,            // ISO
-      encuadre: 'espana',           // clave de ENCUADRES u objeto propio
-      basemap: 'lienzo',
-      tema: 'auto',                 // 'dia' | 'noche' | 'auto'
-      leyenda: null,                // [{ id, etiqueta, color, forma, filtrable }]
-      leyendaTitulo: '',
-      leyendaNota: '',
-      geolocalizacion: true,
-      selectorCapas: false,
-      pantallaCompleta: true,
-      deepLink: true,               // sincroniza vista con el hash de la URL
-      gestosCooperativos: true,     // no secuestrar el scroll del artículo
+      entradilla: '',
+      fuente: null,                  // { texto, url }
+      actualizado: null,
+      nota: '',                      // metodología o advertencia, al pie
+      encuadre: 'espana',
+      cartografia: 'datos/base-espana.json',
+      tema: 'dia',                   // 'dia' | 'noche'
+      firma: 'La Razón',
+      detalle: 'auto',               // 'ccaa' | 'provincias' | 'auto'
+      leyenda: null,
+      geolocalizacion: false,
+      gestosCooperativos: true,
+      deepLink: true,
+      insetCanarias: true,
       tablaAccesible: true,
-      alSeleccionar: null,          // fn(feature, capa) -> {titulo, texto, datos, enlace} | false
-      estilo: null,                 // fn(feature) -> opciones de path Leaflet
-      punto: null,                  // fn(feature, latlng) -> capa Leaflet
-      etiquetaFlotante: null        // fn(feature) -> string para tooltip
-    }, opciones || {});
+      alSeleccionar: null,
+      estilo: null,
+      punto: null,
+      etiquetaFlotante: null
+    }, op || {});
 
-    this.contenedor = typeof o.el === 'string' ? document.querySelector(o.el) : o.el;
-    if (!this.contenedor) throw new Error('LRMap: contenedor no encontrado');
+    this.caja = typeof o.el === 'string' ? document.querySelector(o.el) : o.el;
+    if (!this.caja) throw new Error('LRMap: no encuentro el contenedor ' + o.el);
 
-    this.escuchas = {};
+    this.oyentes = {};
     this.filtros = {};
-    this.datos = null;
 
-    this._montarChrome();
-    this._crearMapa();
-    this._montarControles();
-    this._montarGestos();
-    if (o.deepLink) this._montarDeepLink();
-    this._montarEmbed();
-    this._aplicarTema();
+    this._chrome();
+    this._mapa();
+    this._gestos();
+    if (o.deepLink) this._deepLink();
+    this._embed();
+    this._cargarCartografia();
   }
 
-  LRMap.prototype._encuadre = function () {
-    var e = this.opciones.encuadre;
-    return typeof e === 'string' ? (ENCUADRES[e] || ENCUADRES.espana) : e;
-  };
+  // — DOM --------------------------------------------------------------------
 
-  // — Estructura DOM ---------------------------------------------------------
-
-  LRMap.prototype._montarChrome = function () {
-    var o = this.opciones;
-    var c = this.contenedor;
+  LRMap.prototype._chrome = function () {
+    var o = this.op, c = this.caja, self = this;
     c.classList.add('lrmap');
+    c.dataset.tema = o.tema;
 
-    this.lienzo = crearElemento('div', 'lrmap__canvas');
-    c.appendChild(this.lienzo);
+    // cabecera sólida: no flota sobre el territorio, no muerde el norte
+    var cab = el('header', 'lrmap__cabecera');
+    var izq = el('div');
+    if (o.titulo) izq.appendChild(el('h2', 'lrmap__titulo', escapar(o.titulo)));
+    if (o.entradilla) izq.appendChild(el('p', 'lrmap__entradilla', o.entradilla));
+    cab.appendChild(izq);
+    this.elSello = el('div', 'lrmap__sello');
+    if (o.actualizado) this.elSello.innerHTML = '<span>Datos de</span><time>' + fecha(o.actualizado) + '</time>';
+    cab.appendChild(this.elSello);
+    c.appendChild(cab);
 
-    // cabecera
-    if (o.titulo || o.actualizado) {
-      var cab = crearElemento('div', 'lrmap__cabecera');
-      var bloque = crearElemento('div');
-      if (o.titulo) bloque.appendChild(crearElemento('h2', 'lrmap__titulo', o.titulo));
-      if (o.subtitulo) bloque.appendChild(crearElemento('p', 'lrmap__pie-titulo', o.subtitulo));
-      cab.appendChild(bloque);
-      if (o.actualizado) {
-        this.elActualizado = crearElemento('div', 'lrmap__actualizado',
-          'Actualizado<b>' + formatearFecha(o.actualizado) + '</b>');
-        cab.appendChild(this.elActualizado);
-      }
-      c.appendChild(cab);
+    // escenario
+    var esc = el('div', 'lrmap__escenario');
+    this.lienzo = el('div', 'lrmap__lienzo');
+    esc.appendChild(this.lienzo);
+    this.capaEtiquetas = el('div', 'lrmap__toponimos');
+    esc.appendChild(this.capaEtiquetas);
+
+    var mandos = el('div', 'lrmap__mandos');
+    function mando(icono, texto, fn) {
+      var b = el('button', 'lrmap__mando', icono);
+      b.type = 'button'; b.title = texto; b.setAttribute('aria-label', texto);
+      b.addEventListener('click', fn);
+      mandos.appendChild(b);
+      return b;
     }
+    mando(ICONO.mas, 'Acercar', function () { self.mapa.zoomIn(); });
+    mando(ICONO.menos, 'Alejar', function () { self.mapa.zoomOut(); });
+    this.btnTodo = mando(ICONO.todo, 'Ver España entera', function () { self.reencuadrar(); });
+    this.btnTodo.classList.add('lrmap__mando--guardado');
+    if (o.geolocalizacion && navigator.geolocation) {
+      var bg = mando(ICONO.yo, 'Ir a mi zona', function () { self._geolocalizar(bg); });
+    }
+    esc.appendChild(mandos);
 
-    // leyenda
-    this.elLeyenda = crearElemento('div', 'lrmap__leyenda');
-    this.elLeyenda.hidden = true;
-    c.appendChild(this.elLeyenda);
-    if (o.leyenda) this.setLeyenda(o.leyenda, o.leyendaTitulo, o.leyendaNota);
+    this.panel = el('aside', 'lrmap__ficha');
+    this.panel.dataset.abierta = 'no';
+    this.panel.setAttribute('aria-live', 'polite');
+    var x = el('button', 'lrmap__ficha-cerrar', '&#215;');
+    x.type = 'button'; x.setAttribute('aria-label', 'Cerrar detalle');
+    x.addEventListener('click', function () { self.cerrarFicha(); });
+    this.panel.appendChild(x);
+    this.panelCuerpo = el('div', 'lrmap__ficha-cuerpo');
+    this.panel.appendChild(this.panelCuerpo);
+    esc.appendChild(this.panel);
 
-    // panel de detalle
-    this.elPanel = crearElemento('aside', 'lrmap__panel');
-    this.elPanel.setAttribute('aria-live', 'polite');
-    this.elPanel.dataset.abierto = 'no';
-    var cerrar = crearElemento('button', 'lrmap__panel-cerrar', '&times;');
-    cerrar.setAttribute('aria-label', 'Cerrar detalle');
-    cerrar.addEventListener('click', this.cerrarPanel.bind(this));
-    this.elPanel.appendChild(cerrar);
-    this.elPanelCuerpo = crearElemento('div');
-    this.elPanel.appendChild(this.elPanelCuerpo);
-    c.appendChild(this.elPanel);
+    this.elEstado = el('div', 'lrmap__estado'); this.elEstado.hidden = true;
+    esc.appendChild(this.elEstado);
+    this.elGesto = el('div', 'lrmap__gesto'); this.elGesto.setAttribute('aria-hidden', 'true');
+    esc.appendChild(this.elGesto);
 
-    // pie
-    var pie = crearElemento('div', 'lrmap__pie');
-    this.elFuente = crearElemento('span', 'lrmap__fuente');
+    c.appendChild(esc);
+
+    // pie único: clave + fuente + firma
+    var pie = el('footer', 'lrmap__pie');
+    this.elLeyenda = el('div', 'lrmap__clave');
+    pie.appendChild(this.elLeyenda);
+    var cred = el('div', 'lrmap__creditos');
+    this.elFuente = el('span', 'lrmap__fuente');
     if (o.fuente) {
       this.elFuente.innerHTML = 'Fuente: ' + (o.fuente.url
-        ? '<a href="' + o.fuente.url + '" target="_blank" rel="noopener">' + o.fuente.texto + '</a>'
-        : o.fuente.texto);
+        ? '<a href="' + o.fuente.url + '" target="_blank" rel="noopener">' + escapar(o.fuente.texto) + '</a>'
+        : escapar(o.fuente.texto));
     }
-    pie.appendChild(this.elFuente);
-    this.elAtribucion = crearElemento('span', 'lrmap__atribucion');
-    pie.appendChild(this.elAtribucion);
+    cred.appendChild(this.elFuente);
+    if (o.firma) cred.appendChild(el('span', 'lrmap__firma', escapar(o.firma)));
+    pie.appendChild(cred);
+    if (o.nota) pie.appendChild(el('p', 'lrmap__metodologia', o.nota));
     c.appendChild(pie);
 
-    // estado
-    this.elEstado = crearElemento('div', 'lrmap__estado');
-    this.elEstado.hidden = true;
-    c.appendChild(this.elEstado);
-
-    // aviso de gestos
-    this.elGesto = crearElemento('div', 'lrmap__gesto');
-    this.elGesto.setAttribute('aria-hidden', 'true');
-    c.appendChild(this.elGesto);
-
-    // tabla accesible
-    if (o.tablaAccesible) {
-      this.elTabla = crearElemento('div', 'lrmap__tabla');
-      c.appendChild(this.elTabla);
-    }
+    if (o.leyenda) this.setLeyenda(o.leyenda);
+    if (o.tablaAccesible) { this.elTabla = el('div', 'lrmap__tabla'); c.appendChild(this.elTabla); }
   };
 
-  // — Mapa Leaflet -----------------------------------------------------------
+  // — Mapa -------------------------------------------------------------------
 
-  LRMap.prototype._crearMapa = function () {
-    var enc = this._encuadre();
-    var movil = esMovil();
+  LRMap.prototype._encuadre = function () {
+    var e = this.op.encuadre;
+    var v = typeof e === 'string' ? (ENCUADRES[e] || ENCUADRES.espana) : e;
+    return L.latLngBounds(v.limites);
+  };
+
+  LRMap.prototype._mapa = function () {
+    var self = this;
+    var movil = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
 
     var mapa = this.mapa = L.map(this.lienzo, {
+      crs: CRS_ESPANA,
       zoomControl: false,
       attributionControl: false,
       preferCanvas: true,
-      zoomSnap: 0.25,
-      wheelPxPerZoomLevel: 140,
+      zoomSnap: 0,
+      zoomDelta: 0.6,
+      wheelPxPerZoomLevel: 160,
       scrollWheelZoom: false,
       dragging: !movil,
       tap: false,
-      minZoom: 3,
-      maxBounds: enc.limites ? L.latLngBounds(enc.limites).pad(0.55) : null,
-      maxBoundsViscosity: 0.7
-    }).setView(enc.centro, enc.zoom);
+      minZoom: 4.4,
+      maxZoom: 13,
+      maxBoundsViscosity: 0.85,
+      fadeAnimation: false
+    });
 
-    // Panes: etiquetas del basemap por encima de polígonos, por debajo de puntos.
-    mapa.createPane('lrAreas');       mapa.getPane('lrAreas').style.zIndex = 380;
-    mapa.createPane('lrEtiquetas');   mapa.getPane('lrEtiquetas').style.zIndex = 430;
-    mapa.getPane('lrEtiquetas').classList.add('leaflet-pane--etiquetas');
-    mapa.createPane('lrLineas');      mapa.getPane('lrLineas').style.zIndex = 460;
-    mapa.createPane('lrPuntos');      mapa.getPane('lrPuntos').style.zIndex = 600;
+    mapa.fitBounds(this._encuadre());
+    mapa.setMaxBounds(this._encuadre().pad(0.4));
 
-    this.lienzoAreas = L.canvas({ pane: 'lrAreas', padding: 0.3 });
-    this.lienzoPuntos = L.canvas({ pane: 'lrPuntos', padding: 0.3 });
+    ['lrFondo', 'lrTrazos', 'lrAreas', 'lrLineas', 'lrPuntos'].forEach(function (p, i) {
+      mapa.createPane(p);
+      mapa.getPane(p).style.zIndex = [200, 300, 380, 460, 600][i];
+    });
 
-    this._pintarBasemap(this.opciones.basemap);
+    this.rFondo  = L.canvas({ pane: 'lrFondo',  padding: 0.4 });
+    this.rTrazos = L.canvas({ pane: 'lrTrazos', padding: 0.4 });
+    this.rAreas  = L.canvas({ pane: 'lrAreas',  padding: 0.3 });
+    this.rPuntos = L.canvas({ pane: 'lrPuntos', padding: 0.3 });
 
     this.capaDatos = L.layerGroup().addTo(mapa);
+
+    var refrescar = function () {
+      self._pintarToponimos();
+      var base = self._encuadre(), ahora = self.mapa.getBounds();
+      var fuera = !base.contains(ahora) || (ahora.getNorth() - ahora.getSouth()) < (base.getNorth() - base.getSouth()) * 0.85;
+      self.btnTodo.classList.toggle('lrmap__mando--guardado', !fuera);
+    };
+    mapa.on('zoomend moveend', refrescar);
+    mapa.on('click', function () { self.cerrarFicha(); });
+    window.addEventListener('resize', function () { self._pintarToponimos(); });
   };
 
-  LRMap.prototype._pintarBasemap = function (clave) {
-    var cfg = BASEMAPS[clave] || BASEMAPS.lienzo;
-    if (this._tFondo) this.mapa.removeLayer(this._tFondo);
-    if (this._tEtiquetas) this.mapa.removeLayer(this._tEtiquetas);
-
-    this._tFondo = L.tileLayer(cfg.fondo, {
-      subdomains: cfg.subdominios, maxZoom: cfg.maxZoom, detectRetina: true, crossOrigin: true
-    }).addTo(this.mapa);
-
-    if (cfg.etiquetas) {
-      this._tEtiquetas = L.tileLayer(cfg.etiquetas, {
-        subdomains: cfg.subdominios, maxZoom: cfg.maxZoom, detectRetina: true,
-        pane: 'lrEtiquetas', crossOrigin: true
-      }).addTo(this.mapa);
-    }
-    this.elAtribucion.innerHTML = cfg.atribucion;
-    this.basemapActual = clave;
+  LRMap.prototype._color = function (n) {
+    return getComputedStyle(this.caja).getPropertyValue('--lr-' + n).trim();
   };
 
-  // — Controles --------------------------------------------------------------
-
-  LRMap.prototype._montarControles = function () {
-    var self = this, o = this.opciones;
-    var caja = crearElemento('div', 'lrmap__controles');
-
-    function boton(icono, etiqueta, alPulsar) {
-      var b = crearElemento('button', 'lrmap__btn', icono);
-      b.type = 'button';
-      b.setAttribute('aria-label', etiqueta);
-      b.title = etiqueta;
-      b.addEventListener('click', alPulsar);
-      caja.appendChild(b);
-      return b;
-    }
-
-    boton(ICONOS.mas, 'Acercar', function () { self.mapa.zoomIn(); });
-    boton(ICONOS.menos, 'Alejar', function () { self.mapa.zoomOut(); });
-    boton(ICONOS.inicio, 'Ver todo el mapa', function () { self.reencuadrar(); });
-
-    if (o.geolocalizacion && navigator.geolocation) {
-      var bGeo = boton(ICONOS.yo, 'Centrar en mi ubicación', function () {
-        bGeo.disabled = true;
-        navigator.geolocation.getCurrentPosition(function (p) {
-          bGeo.disabled = false;
-          self.mapa.flyTo([p.coords.latitude, p.coords.longitude], 11, { duration: 0.9 });
-          self.emitir('geolocalizado', { lat: p.coords.latitude, lng: p.coords.longitude });
-        }, function () {
-          bGeo.disabled = false;
-          self.mostrarEstado('aviso', 'No hemos podido obtener tu ubicación. Revisa los permisos del navegador.', 'Entendido');
-        }, { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
+  LRMap.prototype._cargarCartografia = function () {
+    var self = this;
+    this.mostrarEstado('cargando', 'Dibujando el mapa…');
+    fetch(this.op.cartografia)
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (base) { self._pintarBase(base); self.ocultarEstado(); self.emitir('listo'); })
+      .catch(function (e) {
+        self.mostrarEstado('error', 'No hemos podido dibujar el mapa base.', 'Reintentar',
+          function () { self._cargarCartografia(); });
+        self.emitir('error', e);
       });
-    }
-
-    if (o.selectorCapas) {
-      var orden = ['lienzo', 'ign', 'satelite'];
-      boton(ICONOS.capas, 'Cambiar capa base', function () {
-        var i = orden.indexOf(self.basemapActual);
-        self._pintarBasemap(orden[(i + 1) % orden.length]);
-        self.emitir('basemap', self.basemapActual);
-      });
-    }
-
-    if (o.pantallaCompleta && document.fullscreenEnabled) {
-      var bFull = boton(ICONOS.pleno, 'Pantalla completa', function () {
-        if (document.fullscreenElement) document.exitFullscreen();
-        else self.contenedor.requestFullscreen().catch(function () {});
-      });
-      document.addEventListener('fullscreenchange', function () {
-        bFull.classList.toggle('lrmap__btn--activo', document.fullscreenElement === self.contenedor);
-        setTimeout(function () { self.mapa.invalidateSize(); }, 60);
-      });
-    }
-
-    this.contenedor.appendChild(caja);
   };
 
-  // — Gestos: el mapa nunca debe robar el scroll del artículo ----------------
+  LRMap.prototype._pintarBase = function (base) {
+    this.base = base;
+    var self = this;
 
-  LRMap.prototype._montarGestos = function () {
-    if (!this.opciones.gestosCooperativos) {
-      this.mapa.scrollWheelZoom.enable();
-      this.mapa.dragging.enable();
-      return;
+    function capa(datos, opciones) {
+      return L.geoJSON(datos, Object.assign({ interactive: false }, opciones)).addTo(self.mapa);
     }
-    var self = this, mapa = this.mapa, el = this.lienzo, temporizador;
-    var teclaMac = /Mac|iPhone|iPad/.test(navigator.platform);
 
-    function avisar(texto) {
-      self.elGesto.textContent = texto;
+    // vecinos: presentes, atenuados, sin nombre
+    capa(base.contexto, {
+      renderer: this.rFondo, pane: 'lrFondo',
+      style: { color: this._color('borde-ajeno'), weight: 0.6,
+               fillColor: this._color('tierra-ajena'), fillOpacity: 1 }
+    });
+
+    capa(base.provincias, {
+      renderer: this.rFondo, pane: 'lrFondo',
+      style: { stroke: false, fillColor: this._color('tierra'), fillOpacity: 1 }
+    });
+
+    capa(base.lineasProv, {
+      renderer: this.rTrazos, pane: 'lrTrazos',
+      style: { color: this._color('linea-prov'), weight: 0.55 }
+    });
+
+    capa(base.lineasCcaa, {
+      renderer: this.rTrazos, pane: 'lrTrazos',
+      style: { color: this._color('linea-ccaa'), weight: 0.95 }
+    });
+
+    capa(base.nacion, {
+      renderer: this.rTrazos, pane: 'lrTrazos',
+      style: { color: this._color('costa'), weight: 1.05, fill: false }
+    });
+
+    // El recuadro canario se dibuja en píxeles, no en coordenadas: un marco
+    // geográfico saldría girado por la convergencia de meridianos de la cónica.
+    if (this.op.insetCanarias && base.meta && base.meta.recuadro) {
+      var r = base.meta.recuadro;
+      this.recuadro = L.latLngBounds([[r[1], r[0]], [r[3], r[2]]]);
+      this.elRecuadro = el('div', 'lrmap__recuadro');
+      this.capaEtiquetas.parentNode.insertBefore(this.elRecuadro, this.capaEtiquetas);
+    }
+
+    this._pintarToponimos();
+  };
+
+  // — Topónimos: capa HTML propia, en español, con jerarquía por zoom --------
+
+  LRMap.prototype._pintarToponimos = function () {
+    if (!this.base) return;
+    var z = this.mapa.getZoom(), modo = this.op.detalle;
+    if (modo === 'auto') modo = z < 6.4 ? 'ccaa' : 'provincias';
+
+    var lista;
+    if (modo === 'ccaa') {
+      lista = this.base.etiquetasCcaa.features.map(function (f) { return { f: f, clase: 'region' }; });
+    } else {
+      lista = this.base.etiquetasProv.features.map(function (f) { return { f: f, clase: 'provincia' }; });
+      if (z >= 7.6) {
+        lista = this.base.ciudades.features
+          .filter(function (f) { return z >= 8.6 || f.properties.rango === 1; })
+          .map(function (f) { return { f: f, clase: 'ciudad' }; })
+          .concat(lista);
+      }
+    }
+
+    var vista = this.mapa.getBounds(), ocupado = [], html = '';
+    for (var i = 0; i < lista.length; i++) {
+      var it = lista[i], co = it.f.geometry.coordinates;
+      var ll = L.latLng(co[1], co[0]);
+      if (!vista.contains(ll)) continue;
+      var p = this.mapa.latLngToContainerPoint(ll);
+      var texto = it.f.properties.nombre;
+      var ancho = texto.length * (it.clase === 'ciudad' ? 5.5 : 6.1) + 10;
+      var caja = [p.x - ancho / 2, p.y - 8, p.x + ancho / 2, p.y + 8];
+      var choca = false;
+      for (var j = 0; j < ocupado.length; j++) {
+        var q = ocupado[j];
+        if (!(caja[2] < q[0] || caja[0] > q[2] || caja[3] < q[1] || caja[1] > q[3])) { choca = true; break; }
+      }
+      if (choca) continue;
+      ocupado.push(caja);
+      html += '<span class="lrmap__toponimo lrmap__toponimo--' + it.clase + '" style="left:' +
+              Math.round(p.x) + 'px;top:' + Math.round(p.y) + 'px">' +
+              (it.clase === 'ciudad' ? '<i></i>' : '') + escapar(texto) + '</span>';
+    }
+
+    if (this.op.insetCanarias && this.recuadro && this.elRecuadro) {
+      var esquinas = [
+        this.recuadro.getNorthWest(), this.recuadro.getNorthEast(),
+        this.recuadro.getSouthWest(), this.recuadro.getSouthEast()
+      ].map(this.mapa.latLngToContainerPoint, this.mapa);
+      var xs = esquinas.map(function (p) { return p.x; });
+      var ys = esquinas.map(function (p) { return p.y; });
+      var x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys);
+      var x1 = Math.max.apply(null, xs), y1 = Math.max.apply(null, ys);
+      var tam = this.mapa.getSize();
+      var visible = x1 > 0 && y1 > 0 && x0 < tam.x && y0 < tam.y;
+      this.elRecuadro.style.display = visible ? 'block' : 'none';
+      if (visible) {
+        this.elRecuadro.style.cssText += ';left:' + Math.round(x0) + 'px;top:' + Math.round(y0) +
+          'px;width:' + Math.round(x1 - x0) + 'px;height:' + Math.round(y1 - y0) + 'px';
+        html += '<span class="lrmap__toponimo lrmap__toponimo--recuadro" style="left:' +
+                Math.round(x0 + 9) + 'px;top:' + Math.round(y0 + 13) + 'px">Canarias</span>';
+      }
+    }
+    this.capaEtiquetas.innerHTML = html;
+  };
+
+  // — Interacción ------------------------------------------------------------
+
+  LRMap.prototype._gestos = function () {
+    var self = this, mapa = this.mapa, nodo = this.lienzo, t;
+    if (!this.op.gestosCooperativos) { mapa.scrollWheelZoom.enable(); mapa.dragging.enable(); return; }
+    var mac = /Mac|iPhone|iPad/.test(navigator.platform);
+
+    function avisar(txt) {
+      self.elGesto.textContent = txt;
       self.elGesto.dataset.visible = 'si';
-      clearTimeout(temporizador);
-      temporizador = setTimeout(function () { self.elGesto.dataset.visible = 'no'; }, 1400);
+      clearTimeout(t);
+      t = setTimeout(function () { self.elGesto.dataset.visible = 'no'; }, 1300);
     }
-
-    el.addEventListener('wheel', function (e) {
+    nodo.addEventListener('wheel', function (e) {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         mapa.scrollWheelZoom.enable();
-        clearTimeout(self._wheelOff);
-        self._wheelOff = setTimeout(function () { mapa.scrollWheelZoom.disable(); }, 600);
-      } else {
-        avisar('Usa ' + (teclaMac ? '⌘' : 'Ctrl') + ' + rueda para hacer zoom');
-      }
+        clearTimeout(self._w);
+        self._w = setTimeout(function () { mapa.scrollWheelZoom.disable(); }, 700);
+      } else avisar((mac ? '⌘' : 'Ctrl') + ' + rueda para hacer zoom');
     }, { passive: false });
-
-    el.addEventListener('touchstart', function (e) {
+    nodo.addEventListener('touchstart', function (e) {
       if (e.touches.length >= 2) { mapa.dragging.enable(); self.elGesto.dataset.visible = 'no'; }
     }, { passive: true });
-
-    el.addEventListener('touchmove', function (e) {
+    nodo.addEventListener('touchmove', function (e) {
       if (e.touches.length === 1 && !mapa.dragging.enabled()) avisar('Mueve el mapa con dos dedos');
     }, { passive: true });
-
-    el.addEventListener('touchend', function (e) {
+    nodo.addEventListener('touchend', function (e) {
       if (!e.touches.length) mapa.dragging.disable();
     }, { passive: true });
   };
 
-  // — Deep link: #6.2/40.12/-3.70 (+ /id opcional) ---------------------------
+  LRMap.prototype._geolocalizar = function (boton) {
+    var self = this;
+    boton.disabled = true;
+    navigator.geolocation.getCurrentPosition(function (p) {
+      boton.disabled = false;
+      var lat = p.coords.latitude, lng = p.coords.longitude;
+      if (self.op.insetCanarias && enCanarias(lng, lat)) { lat += CANARIAS.dlat; lng += CANARIAS.dlon; }
+      self.mapa.flyTo([lat, lng], 9, { duration: 0.8 });
+      self.emitir('geolocalizado', { lat: p.coords.latitude, lng: p.coords.longitude });
+    }, function () {
+      boton.disabled = false;
+      self.mostrarEstado('aviso', 'No hemos podido situarte. Revisa los permisos de ubicación del navegador.', 'Entendido');
+    }, { timeout: 8000, maximumAge: 300000 });
+  };
 
-  LRMap.prototype._montarDeepLink = function () {
+  LRMap.prototype._deepLink = function () {
     var self = this;
     var m = /^#(-?[\d.]+)\/(-?[\d.]+)\/(-?[\d.]+)(?:\/(.+))?$/.exec(location.hash);
     if (m) {
-      this.mapa.setView([parseFloat(m[2]), parseFloat(m[3])], parseFloat(m[1]));
-      this._idPendiente = m[4] ? decodeURIComponent(m[4]) : null;
+      this.mapa.setView([+m[2], +m[3]], +m[1]);
+      this._pendiente = m[4] ? decodeURIComponent(m[4]) : null;
     }
-    var escribir = function () {
+    this._hash = function () {
       var c = self.mapa.getCenter();
-      var h = '#' + self.mapa.getZoom().toFixed(2) + '/' + c.lat.toFixed(4) + '/' + c.lng.toFixed(4);
-      if (self.seleccionado && self.seleccionado.properties && self.seleccionado.properties.id) {
-        h += '/' + encodeURIComponent(self.seleccionado.properties.id);
+      var h = '#' + self.mapa.getZoom().toFixed(1) + '/' + c.lat.toFixed(3) + '/' + c.lng.toFixed(3);
+      if (self.elegido && self.elegido.properties && self.elegido.properties.id) {
+        h += '/' + encodeURIComponent(self.elegido.properties.id);
       }
       history.replaceState(null, '', h);
     };
-    this.mapa.on('moveend zoomend', escribir);
-    this._escribirHash = escribir;
+    this.mapa.on('moveend zoomend', this._hash);
   };
 
-  // — Embebido en iframe: avisa de su altura al contenedor -------------------
-
-  LRMap.prototype._montarEmbed = function () {
+  LRMap.prototype._embed = function () {
     if (window.parent === window) return;
     var self = this;
-    var enviar = function () {
-      var alto = Math.ceil(self.contenedor.getBoundingClientRect().height);
-      window.parent.postMessage({ tipo: 'lrmap:alto', alto: alto, id: self.opciones.idEmbed || null }, '*');
+    var avisar = function () {
+      window.parent.postMessage({
+        tipo: 'lrmap:alto',
+        alto: Math.ceil(self.caja.getBoundingClientRect().height),
+        id: self.op.idEmbed || null
+      }, '*');
     };
-    window.addEventListener('load', enviar);
-    if (window.ResizeObserver) new ResizeObserver(enviar).observe(this.contenedor);
-    this.mapa.on('click', function () {
-      window.parent.postMessage({ tipo: 'lrmap:interaccion' }, '*');
-    });
+    window.addEventListener('load', avisar);
+    if (window.ResizeObserver) new ResizeObserver(avisar).observe(this.caja);
   };
 
-  LRMap.prototype._aplicarTema = function () {
-    var t = this.opciones.tema;
-    if (t === 'auto') {
-      t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'noche' : 'dia';
-    }
-    this.contenedor.dataset.theme = t;
-    if (t === 'noche' && this.basemapActual === 'lienzo') this._pintarBasemap('lienzoNoche');
-  };
+  // =========================================================================
+  // 5. API pública
+  // =========================================================================
 
-  // ==========================================================================
-  // API pública
-  // ==========================================================================
-
-  /**
-   * Carga datos. Acepta GeoJSON con propiedades canónicas:
-   *   id, titulo, resumen, ts, nivel (0-4), categoria, valor, unidad, lugar, url
-   */
-  LRMap.prototype.setDatos = function (geojson, opcionesCapa) {
-    var self = this, o = this.opciones;
+  LRMap.prototype.setDatos = function (geojson, extra) {
+    var self = this, o = this.op;
+    this.datosOriginales = geojson;
+    if (o.insetCanarias) geojson = moverCanarias(geojson);
     this.datos = geojson;
     this.capaDatos.clearLayers();
 
-    var capa = L.geoJSON(geojson, Object.assign({
-      renderer: this.lienzoPuntos,
-      pane: 'lrPuntos',
-      filter: function (f) { return self._pasaFiltro(f); },
+    this.capa = L.geoJSON(geojson, Object.assign({
+      filter: function (f) { return self._filtra(f); },
       style: function (f) {
-        var base = { renderer: self.lienzoAreas, pane: 'lrAreas', weight: 1, opacity: .9, fillOpacity: .55 };
-        return o.estilo ? Object.assign(base, o.estilo(f)) : base;
+        var b = { renderer: self.rAreas, pane: 'lrAreas', weight: 1, opacity: 0.95, fillOpacity: 0.6 };
+        return o.estilo ? Object.assign(b, o.estilo(f)) : b;
       },
       pointToLayer: function (f, ll) {
         if (o.punto) return o.punto(f, ll);
         var p = f.properties || {};
-        var r = 5 + (Number(p.nivel) || 0) * 2.2;
         return L.circleMarker(ll, {
-          renderer: self.lienzoPuntos, pane: 'lrPuntos',
-          radius: r, weight: 1.4, color: '#fff', opacity: .95,
-          fillColor: self.colorNivel(p.nivel), fillOpacity: .92
+          renderer: self.rPuntos, pane: 'lrPuntos',
+          radius: 4.5 + (Number(p.nivel) || 0) * 2.1,
+          weight: 1.3, color: self._color('halo'), opacity: 1,
+          fillColor: self.colorNivel(p.nivel), fillOpacity: 0.95
         });
       },
-      onEachFeature: function (f, l) {
-        if (o.etiquetaFlotante) {
-          var t = o.etiquetaFlotante(f);
-          if (t) l.bindTooltip(t, { direction: 'top', offset: [0, -6], sticky: true });
-        } else if (f.properties && f.properties.titulo) {
-          l.bindTooltip(f.properties.titulo, { direction: 'top', offset: [0, -6], sticky: true });
-        }
-        l.on('click', function () { self.seleccionar(f, l); });
-        l.on('keypress', function (e) { if (e.originalEvent.key === 'Enter') self.seleccionar(f, l); });
+      onEachFeature: function (f, capa) {
+        var t = o.etiquetaFlotante ? o.etiquetaFlotante(f) : (f.properties || {}).titulo;
+        if (t) capa.bindTooltip(t, { direction: 'top', offset: [0, -7], sticky: true });
+        capa.on('click', function (e) { L.DomEvent.stopPropagation(e); self.elegir(f, capa); });
       }
-    }, opcionesCapa || {}));
+    }, extra || {})).addTo(this.capaDatos);
 
-    capa.addTo(this.capaDatos);
-    this.capa = capa;
-
-    this.ocultarEstado();
     var n = (geojson.features || []).length;
-    if (!n) this.mostrarEstado('vacio', 'No hay datos que mostrar en este momento.');
-    if (this.opciones.tablaAccesible) this._pintarTabla(geojson);
-    if (this._idPendiente) {
-      this._seleccionarPorId(this._idPendiente);
-      this._idPendiente = null;
-    }
+    if (!n) this.mostrarEstado('vacio', 'Ahora mismo no hay datos que representar.');
+    else this.ocultarEstado();
+    if (this.op.tablaAccesible) this._tabla(geojson);
+    if (this._pendiente) { this._elegirPorId(this._pendiente); this._pendiente = null; }
     this.emitir('datos', { total: n });
-    return capa;
+    return this.capa;
   };
 
-  LRMap.prototype.colorNivel = function (nivel) {
-    var estilos = getComputedStyle(this.contenedor);
-    var n = Math.max(1, Math.min(5, (Number(nivel) || 0) + 1));
-    return estilos.getPropertyValue('--lr-n' + n).trim() || '#c5161d';
-  };
-
-  LRMap.prototype.reencuadrar = function () {
-    var enc = this._encuadre();
-    this.cerrarPanel();
-    this.mapa.flyTo(enc.centro, enc.zoom, { duration: 0.7 });
-  };
-
-  LRMap.prototype.ajustarADatos = function (margen) {
-    if (!this.capa) return;
-    var b = this.capa.getBounds();
-    if (b.isValid()) this.mapa.fitBounds(b, { padding: margen || [40, 40], maxZoom: 11 });
-  };
-
-  LRMap.prototype.seleccionar = function (feature, capa) {
-    var o = this.opciones;
-    var p = feature.properties || {};
-    var contenido = o.alSeleccionar ? o.alSeleccionar(feature, capa) : null;
-    if (contenido === false) return;
-    if (!contenido) {
-      contenido = {
-        titulo: p.titulo || 'Sin título',
-        texto: p.resumen || '',
-        datos: [
-          p.lugar ? { etiqueta: 'Lugar', valor: p.lugar } : null,
-          p.valor != null ? { etiqueta: 'Valor', valor: p.valor + (p.unidad ? ' ' + p.unidad : '') } : null,
-          p.ts ? { etiqueta: 'Actualizado', valor: formatearFecha(p.ts) } : null
-        ].filter(Boolean),
-        enlace: p.url ? { texto: 'Leer la información', url: p.url } : null
-      };
-    }
-    this.abrirPanel(contenido);
-    this.seleccionado = feature;
-    if (this._escribirHash) this._escribirHash();
-    this.emitir('seleccion', feature);
-  };
-
-  LRMap.prototype._seleccionarPorId = function (id) {
-    var self = this;
-    if (!this.capa) return;
-    this.capa.eachLayer(function (l) {
-      if (l.feature && l.feature.properties && String(l.feature.properties.id) === String(id)) {
-        self.seleccionar(l.feature, l);
-        if (l.getLatLng) self.mapa.setView(l.getLatLng(), Math.max(self.mapa.getZoom(), 9));
-      }
-    });
-  };
-
-  LRMap.prototype.abrirPanel = function (c) {
-    var html = '<h3>' + c.titulo + '</h3>';
-    if (c.texto) html += '<p>' + c.texto + '</p>';
-    if (c.datos && c.datos.length) {
-      html += '<dl class="lrmap__datos">';
-      c.datos.forEach(function (d) {
-        html += '<div class="lrmap__dato"><dt>' + d.etiqueta + '</dt><dd>' + d.valor + '</dd></div>';
-      });
-      html += '</dl>';
-    }
-    if (c.html) html += c.html;
-    if (c.enlace) {
-      html += '<a class="lrmap__panel-enlace" href="' + c.enlace.url + '">' + c.enlace.texto + '</a>';
-    }
-    this.elPanelCuerpo.innerHTML = html;
-    this.elPanel.dataset.abierto = 'si';
-    this.contenedor.classList.add('lrmap--panel-abierto');
-  };
-
-  LRMap.prototype.cerrarPanel = function () {
-    this.elPanel.dataset.abierto = 'no';
-    this.contenedor.classList.remove('lrmap--panel-abierto');
-    this.seleccionado = null;
-  };
-
-  /** leyenda: [{ id, etiqueta, color, forma: 'punto'|'linea'|'area', filtrable }] */
-  LRMap.prototype.setLeyenda = function (items, titulo, nota) {
-    var self = this;
-    if (!items || !items.length) { this.elLeyenda.hidden = true; return; }
-    var html = '';
-    if (titulo) html += '<p class="lrmap__leyenda-titulo">' + titulo + '</p>';
-    html += '<ul class="lrmap__leyenda-lista">';
-    items.forEach(function (it) {
-      var forma = 'lrmap__muestra' + (it.forma === 'linea' ? ' lrmap__muestra--linea'
-                 : it.forma === 'area' ? ' lrmap__muestra--area' : '');
-      var muestra = '<span class="' + forma + '" style="background:' + it.color + '"></span>';
-      if (it.filtrable) {
-        html += '<li class="lrmap__leyenda-item" aria-pressed="true" data-id="' + it.id + '">' +
-                '<button type="button">' + muestra + '<span>' + it.etiqueta + '</span></button></li>';
-      } else {
-        html += '<li class="lrmap__leyenda-item">' + muestra + '<span>' + it.etiqueta + '</span></li>';
-      }
-    });
-    html += '</ul>';
-    if (nota) html += '<p class="lrmap__leyenda-nota">' + nota + '</p>';
-    this.elLeyenda.innerHTML = html;
-    this.elLeyenda.hidden = false;
-
-    this.elLeyenda.querySelectorAll('.lrmap__leyenda-item[data-id] button').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var li = b.parentElement, id = li.dataset.id;
-        var activo = li.getAttribute('aria-pressed') === 'true';
-        li.setAttribute('aria-pressed', activo ? 'false' : 'true');
-        self.filtros[id] = activo ? false : true;
-        if (self.datos) self.setDatos(self.datos);
-        self.emitir('filtro', self.filtros);
-      });
-    });
-  };
-
-  LRMap.prototype._pasaFiltro = function (f) {
-    var cat = f.properties && (f.properties.categoria || f.properties.nivel);
-    if (cat == null) return true;
-    return this.filtros[cat] !== false;
-  };
-
-  /** tipo: 'cargando' | 'error' | 'vacio' | 'aviso' */
-  LRMap.prototype.mostrarEstado = function (tipo, mensaje, textoBoton, alPulsar) {
-    var self = this;
-    var html = '';
-    if (tipo === 'cargando') html += '<div class="lrmap__hilo" role="status" aria-label="Cargando datos"></div>';
-    html += '<p>' + (mensaje || '') + '</p>';
-    if (textoBoton) html += '<button type="button" class="lrmap__btn">' + textoBoton + '</button>';
-    this.elEstado.innerHTML = html;
-    this.elEstado.hidden = false;
-    var b = this.elEstado.querySelector('button');
-    if (b) b.addEventListener('click', function () {
-      self.ocultarEstado();
-      if (alPulsar) alPulsar();
-    });
-  };
-
-  LRMap.prototype.ocultarEstado = function () { this.elEstado.hidden = true; };
-
-  LRMap.prototype.setActualizado = function (iso) {
-    if (this.elActualizado) this.elActualizado.innerHTML = 'Actualizado<b>' + formatearFecha(iso) + '</b>';
-  };
-
-  LRMap.prototype._pintarTabla = function (geojson) {
-    var filas = (geojson.features || []).slice(0, 300).map(function (f) {
-      var p = f.properties || {};
-      return '<tr><td>' + (p.titulo || '') + '</td><td>' + (p.lugar || '') + '</td><td>' +
-             (p.valor != null ? p.valor : '') + '</td><td>' + (p.ts || '') + '</td></tr>';
-    }).join('');
-    this.elTabla.innerHTML =
-      '<table><caption>' + (this.opciones.titulo || 'Datos del mapa') + '</caption>' +
-      '<thead><tr><th>Elemento</th><th>Lugar</th><th>Valor</th><th>Fecha</th></tr></thead>' +
-      '<tbody>' + filas + '</tbody></table>';
-  };
-
-  // — eventos ----------------------------------------------------------------
-
-  LRMap.prototype.on = function (evento, fn) {
-    (this.escuchas[evento] = this.escuchas[evento] || []).push(fn);
-    return this;
-  };
-  LRMap.prototype.emitir = function (evento, datos) {
-    (this.escuchas[evento] || []).forEach(function (fn) { fn(datos); });
-    this.contenedor.dispatchEvent(new CustomEvent('lrmap:' + evento, { detail: datos, bubbles: true }));
-  };
-
-  /** Utilidad: carga un GeoJSON con estados y reintento incluidos. */
   LRMap.prototype.cargar = function (url, transformar) {
     var self = this;
     this.mostrarEstado('cargando', 'Cargando datos…');
     return fetch(url, { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (j) { self.setDatos(transformar ? transformar(j) : j); return j; })
+      .then(function (j) {
+        self.setDatos(transformar ? transformar(j) : j);
+        if (j.generado) self.setActualizado(j.generado);
+        return j;
+      })
       .catch(function (e) {
         self.mostrarEstado('error', 'No hemos podido cargar los datos.', 'Reintentar',
           function () { self.cargar(url, transformar); });
@@ -634,13 +571,163 @@
       });
   };
 
-  // ==========================================================================
+  LRMap.prototype.colorNivel = function (nivel) {
+    var n = Math.max(1, Math.min(5, (Number(nivel) || 0) + 1));
+    return this._color('n' + n) || '#c5161d';
+  };
+
+  LRMap.prototype.reencuadrar = function () {
+    this.cerrarFicha();
+    this.mapa.flyToBounds(this._encuadre(), { duration: 0.6 });
+  };
+
+  LRMap.prototype.ajustarADatos = function (margen) {
+    if (!this.capa) return;
+    var b = this.capa.getBounds();
+    if (b.isValid()) this.mapa.fitBounds(b, { padding: margen || [36, 36], maxZoom: 10 });
+  };
+
+  LRMap.prototype.elegir = function (feature, capa) {
+    var p = feature.properties || {};
+    var f = this.op.alSeleccionar ? this.op.alSeleccionar(feature, capa) : null;
+    if (f === false) return;
+    if (!f) {
+      f = {
+        titulo: p.titulo || 'Sin título',
+        texto: p.resumen || '',
+        datos: [
+          p.lugar ? { etiqueta: 'Dónde', valor: escapar(p.lugar) } : null,
+          p.valor != null ? { etiqueta: 'Valor', valor: numero(p.valor) + (p.unidad ? ' ' + escapar(p.unidad) : '') } : null,
+          p.ts ? { etiqueta: 'Dato de', valor: fecha(p.ts) } : null
+        ].filter(Boolean),
+        enlace: p.url ? { texto: 'Seguir leyendo', url: p.url } : null
+      };
+    }
+    this.abrirFicha(f);
+    this.elegido = feature;
+    if (this._hash) this._hash();
+    this.emitir('seleccion', feature);
+  };
+
+  LRMap.prototype._elegirPorId = function (id) {
+    var self = this;
+    if (!this.capa) return;
+    this.capa.eachLayer(function (c) {
+      var p = c.feature && c.feature.properties;
+      if (p && String(p.id) === String(id)) {
+        self.elegir(c.feature, c);
+        if (c.getLatLng) self.mapa.setView(c.getLatLng(), Math.max(self.mapa.getZoom(), 8));
+      }
+    });
+  };
+
+  LRMap.prototype.abrirFicha = function (f) {
+    var h = '<h3>' + escapar(f.titulo) + '</h3>';
+    if (f.texto) h += '<p>' + f.texto + '</p>';
+    if (f.datos && f.datos.length) {
+      h += '<dl class="lrmap__cifras">';
+      f.datos.forEach(function (d) {
+        h += '<div><dt>' + escapar(d.etiqueta) + '</dt><dd>' + d.valor + '</dd></div>';
+      });
+      h += '</dl>';
+    }
+    if (f.html) h += f.html;
+    if (f.enlace) h += '<a class="lrmap__ficha-enlace" href="' + f.enlace.url + '">' + escapar(f.enlace.texto) + '</a>';
+    this.panelCuerpo.innerHTML = h;
+    this.panel.dataset.abierta = 'si';
+    this.caja.classList.add('lrmap--ficha');
+  };
+
+  LRMap.prototype.cerrarFicha = function () {
+    this.panel.dataset.abierta = 'no';
+    this.caja.classList.remove('lrmap--ficha');
+    this.elegido = null;
+  };
+
+  /** leyenda: { titulo, nota, items: [{ id, etiqueta, color, forma, filtrable }] } */
+  LRMap.prototype.setLeyenda = function (ley) {
+    var self = this;
+    if (!ley || !ley.items || !ley.items.length) { this.elLeyenda.innerHTML = ''; return; }
+    var h = '';
+    if (ley.titulo) h += '<span class="lrmap__clave-titulo">' + escapar(ley.titulo) + '</span>';
+    h += '<ul class="lrmap__clave-lista">';
+    ley.items.forEach(function (it) {
+      var forma = 'lrmap__signo' + (it.forma === 'linea' ? ' lrmap__signo--linea'
+                : it.forma === 'area' ? ' lrmap__signo--area' : '');
+      var signo = '<span class="' + forma + '" style="background:' + it.color + '"></span>';
+      var txt = '<span>' + escapar(it.etiqueta) + '</span>';
+      h += it.filtrable
+        ? '<li data-id="' + escapar(it.id) + '" aria-pressed="true"><button type="button">' + signo + txt + '</button></li>'
+        : '<li>' + signo + txt + '</li>';
+    });
+    h += '</ul>';
+    if (ley.nota) h += '<span class="lrmap__clave-nota">' + escapar(ley.nota) + '</span>';
+    this.elLeyenda.innerHTML = h;
+
+    this.elLeyenda.querySelectorAll('li[data-id] button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var li = b.parentElement, on = li.getAttribute('aria-pressed') === 'true';
+        li.setAttribute('aria-pressed', on ? 'false' : 'true');
+        self.filtros[li.dataset.id] = !on;
+        if (self.datosOriginales) self.setDatos(self.datosOriginales);
+        self.emitir('filtro', self.filtros);
+      });
+    });
+  };
+
+  LRMap.prototype._filtra = function (f) {
+    var p = f.properties || {};
+    var clave = p.categoria != null ? p.categoria : p.nivel;
+    return clave == null ? true : this.filtros[clave] !== false;
+  };
+
+  LRMap.prototype.mostrarEstado = function (tipo, mensaje, boton, fn) {
+    var self = this, h = '';
+    if (tipo === 'cargando') h += '<span class="lrmap__hilo" role="status" aria-label="Cargando"></span>';
+    h += '<p>' + escapar(mensaje || '') + '</p>';
+    if (boton) h += '<button type="button">' + escapar(boton) + '</button>';
+    this.elEstado.innerHTML = h;
+    this.elEstado.dataset.tipo = tipo;
+    this.elEstado.hidden = false;
+    var b = this.elEstado.querySelector('button');
+    if (b) b.addEventListener('click', function () { self.ocultarEstado(); if (fn) fn(); });
+  };
+
+  LRMap.prototype.ocultarEstado = function () { this.elEstado.hidden = true; };
+
+  LRMap.prototype.setActualizado = function (iso) {
+    if (this.elSello) this.elSello.innerHTML = '<span>Datos de</span><time>' + fecha(iso) + '</time>';
+  };
+
+  LRMap.prototype._tabla = function (g) {
+    var filas = (g.features || []).slice(0, 400).map(function (f) {
+      var p = f.properties || {};
+      return '<tr><td>' + escapar(p.titulo) + '</td><td>' + escapar(p.lugar) + '</td><td>' +
+             escapar(p.valor) + '</td><td>' + escapar(p.ts) + '</td></tr>';
+    }).join('');
+    this.elTabla.innerHTML = '<table><caption>' + escapar(this.op.titulo || 'Datos del mapa') +
+      '</caption><thead><tr><th>Elemento</th><th>Dónde</th><th>Valor</th><th>Fecha</th></tr></thead><tbody>' +
+      filas + '</tbody></table>';
+  };
+
+  LRMap.prototype.on = function (ev, fn) {
+    (this.oyentes[ev] = this.oyentes[ev] || []).push(fn); return this;
+  };
+  LRMap.prototype.emitir = function (ev, d) {
+    (this.oyentes[ev] || []).forEach(function (fn) { fn(d); });
+    this.caja.dispatchEvent(new CustomEvent('lrmap:' + ev, { detail: d, bubbles: true }));
+  };
+
+  // =========================================================================
 
   global.LRMap = {
     crear: function (o) { return new LRMap(o); },
     ENCUADRES: ENCUADRES,
-    BASEMAPS: BASEMAPS,
-    formatearFecha: formatearFecha
+    CRS: CRS_ESPANA,
+    moverCanarias: moverCanarias,
+    enCanarias: enCanarias,
+    fecha: fecha,
+    numero: numero
   };
 
 })(window);

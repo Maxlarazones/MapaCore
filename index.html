@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Mapa base La Razón — demostración</title>
+<title>Mapa base — La Razón</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,30 +15,30 @@
 
 <style>
   body {
-    margin: 0; padding: 28px 18px 60px;
-    background: #f7f5f1; color: #1c1b19;
+    margin: 0; padding: 30px 18px 70px;
+    background: #efece6; color: #1b1a18;
     font: 16px/1.55 Archivo, system-ui, sans-serif;
   }
-  .envoltorio { max-width: 760px; margin: 0 auto; }
-  .envoltorio > p { max-width: 62ch; color: #56534d; }
-  h1 { font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: 30px; letter-spacing: -.02em; margin: 0 0 6px; }
-  .nota { margin-top: 26px; padding: 14px 16px; background: #fff; border: 1px solid #e2ded6; font-size: 14px; }
-  .nota code { background: #f2efe9; padding: 1px 4px; }
+  .hoja { max-width: 780px; margin: 0 auto; }
+  .hoja h1 { font-family: Fraunces, Georgia, serif; font-weight: 600; font-size: 29px; letter-spacing: -.02em; margin: 0 0 6px; }
+  .hoja > p { max-width: 62ch; color: #55524c; margin: 0 0 22px; }
+  .apunte { margin-top: 24px; padding: 13px 15px; background: #fff; border: 1px solid #e0dbd2; font-size: 13.5px; color: #55524c; }
+  .apunte code { background: #f2efe9; padding: 1px 4px; }
 </style>
 </head>
 <body>
-<div class="envoltorio">
+<div class="hoja">
 
   <h1>Mapa base</h1>
-  <p>Esta página no es un mapa de nada: es el chasis sobre el que se montan los mapas de incendios,
-     tráfico, alertas meteorológicas o lo que haga falta. Los puntos son datos de prueba.</p>
+  <p>El chasis sobre el que se montan los mapas de incendios, tráfico, alertas o lo que haga falta.
+     Los puntos son de prueba: sirven para comprobar el comportamiento, no dicen nada.</p>
 
-  <!-- El contenedor sólo necesita un id. Todo lo demás lo monta LRMap. -->
   <div id="mapa"></div>
 
-  <div class="nota">
-    Prueba: rueda del ratón sin <code>Ctrl</code> no hace zoom (no secuestra el scroll del artículo);
-    un dedo en móvil desplaza la página, dos mueven el mapa. La URL guarda el encuadre y el punto abierto.
+  <div class="apunte">
+    Sin proveedor de tiles: la cartografía son 19 KB de vectores propios, proyectados en cónica de Lambert
+    para España. Prueba la rueda sin <code>Ctrl</code>, el arrastre con un dedo en móvil, y acerca el zoom
+    para ver cómo cambian los topónimos de comunidad a provincia y a ciudad.
   </div>
 
 </div>
@@ -50,54 +50,56 @@
   var mapa = LRMap.crear({
     el: '#mapa',
     titulo: 'Título del mapa',
-    subtitulo: 'Una línea que explica qué está viendo el lector y de cuándo son los datos.',
+    entradilla: 'Una línea que sitúa al lector: qué mide el mapa y de cuándo son los datos.',
     fuente: { texto: 'Origen de los datos', url: 'https://www.larazon.es' },
     actualizado: new Date().toISOString(),
+    nota: 'Nota metodológica: aquí van las advertencias sobre cómo se ha calculado el dato o qué no cubre.',
     encuadre: 'espana',
-    selectorCapas: true,
-    leyendaTitulo: 'Intensidad',
-    leyendaNota: 'Pulsa un nivel para filtrar.',
-    leyenda: [
-      { id: 0, etiqueta: 'Baja',      color: '#fbdcc8', forma: 'punto', filtrable: true },
-      { id: 1, etiqueta: 'Moderada',  color: '#f4a97f', forma: 'punto', filtrable: true },
-      { id: 2, etiqueta: 'Alta',      color: '#e8703f', forma: 'punto', filtrable: true },
-      { id: 3, etiqueta: 'Muy alta',  color: '#c5161d', forma: 'punto', filtrable: true },
-      { id: 4, etiqueta: 'Extrema',   color: '#7d0c14', forma: 'punto', filtrable: true }
-    ]
+    leyenda: {
+      titulo: 'Intensidad',
+      items: [
+        { id: 0, etiqueta: 'Baja',     color: '#f7d9c6', filtrable: true },
+        { id: 1, etiqueta: 'Moderada', color: '#efa878', filtrable: true },
+        { id: 2, etiqueta: 'Alta',     color: '#e0703d', filtrable: true },
+        { id: 3, etiqueta: 'Muy alta', color: '#c5161d', filtrable: true },
+        { id: 4, etiqueta: 'Extrema',  color: '#7c0d15', filtrable: true }
+      ],
+      nota: 'Pulsa un nivel para filtrar'
+    }
   });
 
-  // Datos de prueba con el contrato canónico de propiedades.
-  var prueba = {
+  var muestra = {
     type: 'FeatureCollection',
     features: [
-      ['ej-1', 'Punto de ejemplo A', 'Madrid',    40.416, -3.703, 3, 148, 'unidades'],
-      ['ej-2', 'Punto de ejemplo B', 'Barcelona', 41.385,  2.173, 1,  36, 'unidades'],
-      ['ej-3', 'Punto de ejemplo C', 'Sevilla',   37.389, -5.984, 4, 302, 'unidades'],
-      ['ej-4', 'Punto de ejemplo D', 'A Coruña',  43.362, -8.412, 0,   9, 'unidades'],
-      ['ej-5', 'Punto de ejemplo E', 'Valencia',  39.470, -0.376, 2,  77, 'unidades'],
-      ['ej-6', 'Punto de ejemplo F', 'Bilbao',    43.263, -2.935, 2,  64, 'unidades'],
-      ['ej-7', 'Punto de ejemplo G', 'Zaragoza',  41.649, -0.887, 1,  41, 'unidades'],
-      ['ej-8', 'Punto de ejemplo H', 'Las Palmas',28.124, -15.430,3, 121, 'unidades'],
-      ['ej-9', 'Punto de ejemplo I', 'Palma',     39.570,  2.650, 0,  12, 'unidades'],
-      ['ej-10','Punto de ejemplo J', 'Murcia',    37.987, -1.130, 4, 268, 'unidades']
+      ['p1','Punto de ejemplo A','Madrid',      40.416, -3.703, 3, 148],
+      ['p2','Punto de ejemplo B','Barcelona',   41.385,  2.173, 1,  36],
+      ['p3','Punto de ejemplo C','Sevilla',     37.389, -5.984, 4, 302],
+      ['p4','Punto de ejemplo D','A Coruña',    43.362, -8.412, 0,   9],
+      ['p5','Punto de ejemplo E','Valencia',    39.470, -0.376, 2,  77],
+      ['p6','Punto de ejemplo F','Bilbao',      43.263, -2.935, 2,  64],
+      ['p7','Punto de ejemplo G','Zaragoza',    41.649, -0.887, 1,  41],
+      ['p8','Punto de ejemplo H','Las Palmas',  28.124,-15.430, 3, 121],
+      ['p9','Punto de ejemplo I','S/C Tenerife',28.469,-16.255, 2,  85],
+      ['p10','Punto de ejemplo J','Palma',      39.570,  2.650, 0,  12],
+      ['p11','Punto de ejemplo K','Murcia',     37.987, -1.130, 4, 268],
+      ['p12','Punto de ejemplo L','Oviedo',     43.362, -5.849, 1,  28]
     ].map(function (f) {
       return {
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [f[4], f[3]] },
         properties: {
-          id: f[0], titulo: f[1], lugar: f[2], nivel: f[5], valor: f[6], unidad: f[7],
-          categoria: f[5],
-          resumen: 'Texto breve de contexto que aparece en el panel al pulsar sobre el punto.',
-          ts: new Date().toISOString(),
+          id: f[0], titulo: f[1], lugar: f[2], nivel: f[5], valor: f[6], unidad: 'unidades',
+          categoria: f[5], ts: new Date().toISOString(),
+          resumen: 'Texto breve de contexto que aparece en la ficha al pulsar sobre el punto.',
           url: 'https://www.larazon.es'
         }
       };
     })
   };
 
-  mapa.setDatos(prueba);
-
-  mapa.on('seleccion', function (f) { console.log('seleccionado', f.properties.id); });
+  // Los datos se pintan cuando la cartografía está lista.
+  mapa.on('listo', function () { mapa.setDatos(muestra); });
+  mapa.on('seleccion', function (f) { console.log('elegido:', f.properties.id); });
 </script>
 </body>
 </html>
