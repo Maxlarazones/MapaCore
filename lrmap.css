@@ -121,8 +121,10 @@
 .lrmap .leaflet-container { background: var(--lr-mar); font-family: var(--lr-ui); outline: none; }
 .lrmap .leaflet-control-container { display: none; }
 
-/* — Topónimos: capa propia, en español — */
-.lrmap__toponimos { position: absolute; inset: 0; pointer-events: none; z-index: 420; }
+/* — Topónimos: pane de Leaflet, así viajan clavados al territorio — */
+.lrmap__toponimos { pointer-events: none; transition: opacity .13s ease; }
+.lrmap__toponimos[data-zoom="si"] { opacity: 0; transition-duration: .06s; }
+.lrmap__rotulos { position: absolute; left: 0; top: 0; width: 0; height: 0; }
 .lrmap__toponimo {
   position: absolute;
   transform: translate(-50%, -50%);
@@ -155,7 +157,7 @@
 
 /* — Recuadro de Canarias: rectángulo de pantalla, no de coordenadas — */
 .lrmap__recuadro {
-  position: absolute; z-index: 410;
+  position: absolute;
   border: 1px dashed var(--lr-linea-ccaa);
   pointer-events: none;
 }
@@ -320,6 +322,6 @@
 .lrmap .leaflet-tooltip-top:before { border-top-color: var(--lr-tinta); }
 
 @media (prefers-reduced-motion: reduce) {
-  .lrmap__ficha, .lrmap__gesto { transition: none; }
+  .lrmap__ficha, .lrmap__gesto, .lrmap__toponimos { transition: none; }
   .lrmap__hilo { animation-duration: 2.5s; }
 }

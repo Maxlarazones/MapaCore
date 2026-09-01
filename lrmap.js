@@ -82,7 +82,7 @@
   // =========================================================================
 
   var ENCUADRES = {
-    espana:    { limites: [[34.0, -14.6], [44.0, 4.6]] },
+    espana:    { limites: [[33.9, -15.0], [44.0, 4.7]] },
     peninsula: { limites: [[35.8, -9.8],  [43.9, 3.5]] },
     canarias:  { limites: [[34.2, -14.4], [36.6, -8.8]] },   // ya desplazadas
     baleares:  { limites: [[38.5, 1.1],   [40.2, 4.4]] },
@@ -191,8 +191,6 @@
     var esc = el('div', 'lrmap__escenario');
     this.lienzo = el('div', 'lrmap__lienzo');
     esc.appendChild(this.lienzo);
-    this.capaEtiquetas = el('div', 'lrmap__toponimos');
-    esc.appendChild(this.capaEtiquetas);
 
     var mandos = el('div', 'lrmap__mandos');
     function mando(icono, texto, fn) {
@@ -279,13 +277,18 @@
       fadeAnimation: false
     });
 
-    mapa.fitBounds(this._encuadre());
+    mapa.fitBounds(this._encuadre(), { padding: [6, 6] });
     mapa.setMaxBounds(this._encuadre().pad(0.4));
 
-    ['lrFondo', 'lrTrazos', 'lrAreas', 'lrLineas', 'lrPuntos'].forEach(function (p, i) {
+    ['lrFondo', 'lrTrazos', 'lrAreas', 'lrToponimos', 'lrLineas', 'lrPuntos'].forEach(function (p, i) {
       mapa.createPane(p);
-      mapa.getPane(p).style.zIndex = [200, 300, 380, 460, 600][i];
+      mapa.getPane(p).style.zIndex = [200, 300, 380, 420, 460, 600][i];
     });
+
+    // Los topónimos son un pane, no un div flotante: así Leaflet los arrastra
+    // junto al mapa y quedan clavados al territorio, no a la pantalla.
+    this.capaEtiquetas = mapa.getPane('lrToponimos');
+    this.capaEtiquetas.classList.add('lrmap__toponimos');
 
     this.rFondo  = L.canvas({ pane: 'lrFondo',  padding: 0.4 });
     this.rTrazos = L.canvas({ pane: 'lrTrazos', padding: 0.4 });
@@ -300,7 +303,11 @@
       var fuera = !base.contains(ahora) || (ahora.getNorth() - ahora.getSouth()) < (base.getNorth() - base.getSouth()) * 0.85;
       self.btnTodo.classList.toggle('lrmap__mando--guardado', !fuera);
     };
-    mapa.on('zoomend moveend', refrescar);
+    // En el zoom el pane se escala y el texto se deformaría: lo fundimos y
+    // lo recolocamos al terminar. En el arrastre no hace falta: viaja solo.
+    mapa.on('zoomstart', function () { self.capaEtiquetas.dataset.zoom = 'si'; });
+    mapa.on('zoomend', function () { self.capaEtiquetas.dataset.zoom = 'no'; });
+    mapa.on('zoomend moveend viewreset', refrescar);
     mapa.on('click', function () { self.cerrarFicha(); });
     window.addEventListener('resize', function () { self._pintarToponimos(); });
   };
@@ -363,7 +370,7 @@
       var r = base.meta.recuadro;
       this.recuadro = L.latLngBounds([[r[1], r[0]], [r[3], r[2]]]);
       this.elRecuadro = el('div', 'lrmap__recuadro');
-      this.capaEtiquetas.parentNode.insertBefore(this.elRecuadro, this.capaEtiquetas);
+      this.capaEtiquetas.appendChild(this.elRecuadro);
     }
 
     this._pintarToponimos();
@@ -373,6 +380,10 @@
 
   LRMap.prototype._pintarToponimos = function () {
     if (!this.base) return;
+    if (!this.elTextos) {
+      this.elTextos = el('div', 'lrmap__rotulos');
+      this.capaEtiquetas.appendChild(this.elTextos);
+    }
     var z = this.mapa.getZoom(), modo = this.op.detalle;
     if (modo === 'auto') modo = z < 6.4 ? 'ccaa' : 'provincias';
 
@@ -389,12 +400,16 @@
       }
     }
 
-    var vista = this.mapa.getBounds(), ocupado = [], html = '';
+    // Margen generoso: durante el arrastre las etiquetas viajan con el mapa,
+    // así que conviene tener ya calculadas las que van a entrar en cuadro.
+    var vista = this.mapa.getBounds().pad(0.5);
+    var ocupado = [], html = '';
+
     for (var i = 0; i < lista.length; i++) {
       var it = lista[i], co = it.f.geometry.coordinates;
       var ll = L.latLng(co[1], co[0]);
       if (!vista.contains(ll)) continue;
-      var p = this.mapa.latLngToContainerPoint(ll);
+      var p = this.mapa.latLngToLayerPoint(ll);
       var texto = it.f.properties.nombre;
       var ancho = texto.length * (it.clase === 'ciudad' ? 5.5 : 6.1) + 10;
       var caja = [p.x - ancho / 2, p.y - 8, p.x + ancho / 2, p.y + 8];
@@ -414,22 +429,20 @@
       var esquinas = [
         this.recuadro.getNorthWest(), this.recuadro.getNorthEast(),
         this.recuadro.getSouthWest(), this.recuadro.getSouthEast()
-      ].map(this.mapa.latLngToContainerPoint, this.mapa);
-      var xs = esquinas.map(function (p) { return p.x; });
-      var ys = esquinas.map(function (p) { return p.y; });
+      ].map(this.mapa.latLngToLayerPoint, this.mapa);
+      var xs = esquinas.map(function (e) { return e.x; });
+      var ys = esquinas.map(function (e) { return e.y; });
       var x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys);
       var x1 = Math.max.apply(null, xs), y1 = Math.max.apply(null, ys);
-      var tam = this.mapa.getSize();
-      var visible = x1 > 0 && y1 > 0 && x0 < tam.x && y0 < tam.y;
-      this.elRecuadro.style.display = visible ? 'block' : 'none';
-      if (visible) {
-        this.elRecuadro.style.cssText += ';left:' + Math.round(x0) + 'px;top:' + Math.round(y0) +
-          'px;width:' + Math.round(x1 - x0) + 'px;height:' + Math.round(y1 - y0) + 'px';
-        html += '<span class="lrmap__toponimo lrmap__toponimo--recuadro" style="left:' +
-                Math.round(x0 + 9) + 'px;top:' + Math.round(y0 + 13) + 'px">Canarias</span>';
-      }
+      this.elRecuadro.style.left = Math.round(x0) + 'px';
+      this.elRecuadro.style.top = Math.round(y0) + 'px';
+      this.elRecuadro.style.width = Math.round(x1 - x0) + 'px';
+      this.elRecuadro.style.height = Math.round(y1 - y0) + 'px';
+      html += '<span class="lrmap__toponimo lrmap__toponimo--recuadro" style="left:' +
+              Math.round(x0 + 9) + 'px;top:' + Math.round(y0 + 13) + 'px">Canarias</span>';
     }
-    this.capaEtiquetas.innerHTML = html;
+
+    this.elTextos.innerHTML = html;
   };
 
   // — Interacción ------------------------------------------------------------
@@ -578,7 +591,7 @@
 
   LRMap.prototype.reencuadrar = function () {
     this.cerrarFicha();
-    this.mapa.flyToBounds(this._encuadre(), { duration: 0.6 });
+    this.mapa.flyToBounds(this._encuadre(), { padding: [6, 6], duration: 0.6 });
   };
 
   LRMap.prototype.ajustarADatos = function (margen) {
