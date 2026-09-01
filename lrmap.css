@@ -149,6 +149,11 @@
   width: 3px; height: 3px; border-radius: 50%;
   background: var(--lr-costa); flex: none;
 }
+.lrmap__toponimo--dato {
+  font-size: 11px; font-weight: 600; letter-spacing: -.005em;
+  color: var(--lr-tinta);
+  text-shadow: 0 0 3px var(--lr-papel), 0 0 3px var(--lr-papel), 0 0 4px var(--lr-papel);
+}
 .lrmap__toponimo--recuadro {
   transform: none;
   font-family: var(--lr-display);
@@ -293,6 +298,7 @@
 .lrmap__signo { width: 11px; height: 11px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.16); }
 .lrmap__signo--linea { height: 3px; width: 15px; border-radius: 2px; }
 .lrmap__signo--area { border-radius: 2px; }
+.lrmap__signo--hueco { background: var(--lr-papel); border: 2px solid; box-shadow: none; }
 .lrmap__clave-nota { color: var(--lr-tinta-3); }
 
 .lrmap__creditos { margin-left: auto; display: flex; align-items: baseline; gap: 12px; }

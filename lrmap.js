@@ -152,6 +152,7 @@
       alSeleccionar: null,
       estilo: null,
       punto: null,
+      rotulo: null,                  // fn(f) -> texto junto al punto, o null
       etiquetaFlotante: null
     }, op || {});
 
@@ -404,7 +405,39 @@
     // así que conviene tener ya calculadas las que van a entrar en cuadro.
     var vista = this.mapa.getBounds().pad(0.5);
     var ocupado = [], html = '';
+    var self = this;
 
+    function libre(caja) {
+      for (var k = 0; k < ocupado.length; k++) {
+        var q = ocupado[k];
+        if (!(caja[2] < q[0] || caja[0] > q[2] || caja[3] < q[1] || caja[1] > q[3])) return false;
+      }
+      return true;
+    }
+
+    // 1. Los rótulos del dato van primero: mandan sobre la toponimia del fondo.
+    if (this.op.rotulo && this.datos && this.datos.features) {
+      this.datos.features.forEach(function (f) {
+        if (!f.geometry || f.geometry.type !== 'Point') return;
+        if (!self._filtra(f)) return;
+        var texto = self.op.rotulo(f);
+        if (!texto) return;
+        var c = f.geometry.coordinates;
+        var ll = L.latLng(c[1], c[0]);
+        if (!vista.contains(ll)) return;
+        var q = self.mapa.latLngToLayerPoint(ll);
+        // el punto ocupa sitio aunque el rótulo no quepa
+        ocupado.push([q.x - 10, q.y - 10, q.x + 10, q.y + 10]);
+        var an = texto.length * 5.6 + 8;
+        var caja = [q.x - an / 2, q.y + 8, q.x + an / 2, q.y + 23];
+        if (!libre(caja)) return;
+        ocupado.push(caja);
+        html += '<span class="lrmap__toponimo lrmap__toponimo--dato" style="left:' +
+                Math.round(q.x) + 'px;top:' + Math.round(q.y + 15) + 'px">' + escapar(texto) + '</span>';
+      });
+    }
+
+    // 2. Toponimia del mapa base, en los huecos que queden.
     for (var i = 0; i < lista.length; i++) {
       var it = lista[i], co = it.f.geometry.coordinates;
       var ll = L.latLng(co[1], co[0]);
@@ -413,12 +446,7 @@
       var texto = it.f.properties.nombre;
       var ancho = texto.length * (it.clase === 'ciudad' ? 5.5 : 6.1) + 10;
       var caja = [p.x - ancho / 2, p.y - 8, p.x + ancho / 2, p.y + 8];
-      var choca = false;
-      for (var j = 0; j < ocupado.length; j++) {
-        var q = ocupado[j];
-        if (!(caja[2] < q[0] || caja[0] > q[2] || caja[3] < q[1] || caja[1] > q[3])) { choca = true; break; }
-      }
-      if (choca) continue;
+      if (!libre(caja)) continue;
       ocupado.push(caja);
       html += '<span class="lrmap__toponimo lrmap__toponimo--' + it.clase + '" style="left:' +
               Math.round(p.x) + 'px;top:' + Math.round(p.y) + 'px">' +
@@ -563,6 +591,7 @@
     else this.ocultarEstado();
     if (this.op.tablaAccesible) this._tabla(geojson);
     if (this._pendiente) { this._elegirPorId(this._pendiente); this._pendiente = null; }
+    this._pintarToponimos();
     this.emitir('datos', { total: n });
     return this.capa;
   };
@@ -666,8 +695,11 @@
     h += '<ul class="lrmap__clave-lista">';
     ley.items.forEach(function (it) {
       var forma = 'lrmap__signo' + (it.forma === 'linea' ? ' lrmap__signo--linea'
-                : it.forma === 'area' ? ' lrmap__signo--area' : '');
-      var signo = '<span class="' + forma + '" style="background:' + it.color + '"></span>';
+                : it.forma === 'area' ? ' lrmap__signo--area'
+                : it.forma === 'hueco' ? ' lrmap__signo--hueco' : '');
+      var signo = it.forma === 'hueco'
+        ? '<span class="' + forma + '" style="border-color:' + it.color + '"></span>'
+        : '<span class="' + forma + '" style="background:' + it.color + '"></span>';
       var txt = '<span>' + escapar(it.etiqueta) + '</span>';
       h += it.filtrable
         ? '<li data-id="' + escapar(it.id) + '" aria-pressed="true"><button type="button">' + signo + txt + '</button></li>'

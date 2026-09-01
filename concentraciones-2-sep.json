@@ -1,0 +1,200 @@
+{
+  "generado": "2026-09-01T09:00:00+02:00",
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-3.7010, 40.4180] },
+      "properties": {
+        "id": "madrid", "titulo": "Madrid", "lugar": "Comunidad de Madrid",
+        "categoria": "20:00", "hora": "20:00", "valor": 2,
+        "ts": "2026-09-02T20:00:00+02:00",
+        "actos": [
+          { "hora": "20:00", "lugar": "Congreso de los Diputados", "convocante": "Convocatoria ciudadana «Por Ceuta»", "tipo": "ciudadana" },
+          { "hora": "20:00", "lugar": "Plaza de Cibeles", "convocante": "Ayuntamiento de Madrid / FEMP", "tipo": "institucional" }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [2.1734, 41.3850] },
+      "properties": {
+        "id": "barcelona", "titulo": "Barcelona", "lugar": "Cataluña",
+        "categoria": "20:00", "hora": "20:00", "valor": 2,
+        "ts": "2026-09-02T20:00:00+02:00",
+        "actos": [
+          { "hora": "20:00", "lugar": "Plaça de Sant Jaume", "convocante": "PP de Barcelona", "tipo": "partido" },
+          { "hora": "20:00", "lugar": "Plaça de Catalunya", "convocante": "Sectores de la convocatoria ciudadana", "tipo": "ciudadana" }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-5.3190, 35.8890] },
+      "properties": {
+        "id": "ceuta", "titulo": "Ceuta", "lugar": "Ciudad autónoma", "destacado": true,
+        "categoria": "19:00", "hora": "19:00", "valor": 1,
+        "ts": "2026-09-02T19:00:00+02:00",
+        "actos": [
+          { "hora": "19:00", "lugar": "De las Murallas Reales a la Plaza de los Reyes", "convocante": "FPAV y Foro Ceuta Siglo XXI", "tipo": "ciudadana", "nota": "Marcha con lectura de manifiesto al final del recorrido" }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-5.9845, 37.3891] },
+      "properties": {
+        "id": "sevilla", "titulo": "Sevilla", "lugar": "Andalucía",
+        "categoria": "20:00", "hora": "20:00", "valor": 1,
+        "ts": "2026-09-02T20:00:00+02:00",
+        "actos": [
+          { "hora": "20:00", "lugar": "Plaza Nueva", "convocante": "Ayuntamiento / FEMP", "tipo": "institucional" }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-4.4214, 36.7213] },
+      "properties": {
+        "id": "malaga", "titulo": "Málaga", "lugar": "Andalucía",
+        "categoria": "20:00", "hora": "20:00", "valor": 1,
+        "ts": "2026-09-02T20:00:00+02:00",
+        "actos": [
+          { "hora": "20:00", "lugar": "Puerta del Ayuntamiento, avenida de Cervantes 4", "convocante": "Ayuntamiento", "tipo": "institucional" }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-4.7794, 37.8882] },
+      "properties": {
+        "id": "cordoba", "titulo": "Córdoba", "lugar": "Andalucía",
+        "categoria": "20:00", "hora": "20:00", "valor": 1,
+        "ts": "2026-09-02T20:00:00+02:00",
+        "actos": [
+          { "hora": "20:00", "lugar": "Ayuntamiento, calle Capitulares", "convocante": "Ayuntamiento / FEMP", "tipo": "institucional" }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-6.9447, 37.2614] },
+      "properties": {
+        "id": "huelva", "titulo": "Huelva", "lugar": "Andalucía",
+        "categoria": "20:00", "hora": "20:00", "valor": 1,
+        "ts": "2026-09-02T20:00:00+02:00",
+        "actos": [
+          { "hora": "20:00", "lugar": "Puerta del Ayuntamiento", "convocante": "Ayuntamiento / FEMP", "tipo": "institucional" }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-3.7849, 37.7796] },
+      "properties": {
+        "id": "jaen", "titulo": "Jaén", "lugar": "Andalucía",
+        "categoria": "20:00", "hora": "20:00", "valor": 1,
+        "ts": "2026-09-02T20:00:00+02:00",
+        "actos": [
+          { "hora": "20:00", "lugar": "Plaza de las Batallas", "convocante": "Convocatoria ciudadana", "tipo": "ciudadana", "nota": "Acto independiente del convocado por el Ayuntamiento" }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-0.3763, 39.4699] },
+      "properties": {
+        "id": "valencia", "titulo": "València", "lugar": "Comunidad Valenciana",
+        "categoria": "20:00", "hora": "20:00", "valor": 1,
+        "ts": "2026-09-02T20:00:00+02:00",
+        "actos": [
+          { "hora": "20:00", "lugar": "Plaza del Ayuntamiento", "convocante": "Ayuntamiento / FEMP", "tipo": "institucional" }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-0.8891, 41.6488] },
+      "properties": {
+        "id": "zaragoza", "titulo": "Zaragoza", "lugar": "Aragón",
+        "categoria": "20:00", "hora": "20:00", "valor": 1,
+        "ts": "2026-09-02T20:00:00+02:00",
+        "actos": [
+          { "hora": "20:00", "lugar": "Plaza del Pilar", "convocante": "Ayuntamiento", "tipo": "institucional" }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-3.1613, 40.6288] },
+      "properties": {
+        "id": "guadalajara", "titulo": "Guadalajara", "lugar": "Castilla-La Mancha",
+        "categoria": "20:00", "hora": "20:00", "valor": 1,
+        "ts": "2026-09-02T20:00:00+02:00",
+        "actos": [
+          { "hora": "20:00", "lugar": "Plaza Mayor", "convocante": "Ayuntamiento", "tipo": "institucional" }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-8.4115, 43.3623] },
+      "properties": {
+        "id": "a-coruna", "titulo": "A Coruña", "lugar": "Galicia",
+        "categoria": "20:00", "hora": "20:00", "valor": 1,
+        "ts": "2026-09-02T20:00:00+02:00",
+        "actos": [
+          { "hora": "20:00", "lugar": "Plaza de María Pita", "convocante": "Convocatoria municipal", "tipo": "institucional" }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-15.4363, 28.1235] },
+      "properties": {
+        "id": "las-palmas", "titulo": "Las Palmas de Gran Canaria", "lugar": "Canarias",
+        "categoria": "19:00", "hora": "19:00", "valor": 1,
+        "ts": "2026-09-02T19:00:00+01:00",
+        "actos": [
+          { "hora": "19:00", "lugar": "Plaza de Santa Ana", "convocante": "Convocatoria local", "tipo": "institucional" }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-15.4167, 27.9985] },
+      "properties": {
+        "id": "telde", "titulo": "Telde", "lugar": "Canarias",
+        "categoria": "19:00", "hora": "19:00", "valor": 1,
+        "ts": "2026-09-02T19:00:00+01:00",
+        "actos": [
+          { "hora": "19:00", "lugar": "Plaza de San Juan", "convocante": "Convocatoria local", "tipo": "institucional" }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-13.8627, 28.5004] },
+      "properties": {
+        "id": "puerto-del-rosario", "titulo": "Puerto del Rosario", "lugar": "Canarias",
+        "categoria": "19:00", "hora": "19:00", "valor": 1,
+        "ts": "2026-09-02T19:00:00+01:00",
+        "actos": [
+          { "hora": "19:00", "lugar": "Junto al Ayuntamiento", "convocante": "Convocatoria local", "tipo": "institucional" }
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-16.2518, 28.4636] },
+      "properties": {
+        "id": "santa-cruz-tenerife", "titulo": "Santa Cruz de Tenerife", "lugar": "Canarias",
+        "categoria": "19:00", "hora": "19:00", "valor": 1,
+        "ts": "2026-09-02T19:00:00+01:00",
+        "actos": [
+          { "hora": "19:00", "lugar": "Frente al Ayuntamiento", "convocante": "Convocatoria institucional", "tipo": "institucional" }
+        ]
+      }
+    }
+  ]
+}

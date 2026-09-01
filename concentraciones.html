@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Concentraciones por Ceuta del 2 de septiembre — La Razón</title>
+<meta name="description" content="Mapa de las concentraciones convocadas el 2 de septiembre, Día de Ceuta: ciudad, hora, lugar y quién convoca.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="lrmap.css">
+
+<style>
+  html, body { margin: 0; background: transparent; }
+  body { font-family: Archivo, system-ui, sans-serif; }
+
+  /* Lista de actos dentro de la ficha */
+  .acto { padding: 9px 0; border-top: 1px solid #e6e2da; }
+  .acto:first-child { border-top: 0; padding-top: 2px; }
+  .acto__hora {
+    font-variant-numeric: tabular-nums; font-weight: 600; font-size: 13px;
+    color: #1b1a18; margin-right: 7px;
+  }
+  .acto__lugar { font-size: 13px; color: #1b1a18; }
+  .acto__quien { display: block; margin-top: 3px; font-size: 12px; color: #55524c; }
+  .acto__nota { display: block; margin-top: 3px; font-size: 11.5px; color: #857f76; }
+  .acto__tipo {
+    display: inline-block; margin-top: 5px; padding: 1px 6px;
+    font-size: 10.5px; letter-spacing: .02em;
+    border: 1px solid #d8d2c7; color: #55524c;
+  }
+  [data-tema="noche"] .acto { border-color: #303436; }
+  [data-tema="noche"] .acto__hora, [data-tema="noche"] .acto__lugar { color: #f3f1ed; }
+  [data-tema="noche"] .acto__quien { color: #b6b2ab; }
+</style>
+</head>
+<body>
+
+<div id="mapa"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="lrmap.js"></script>
+<script>
+  var ROJO = '#c5161d', PAPEL = '#fbfaf8';
+
+  var mapa = LRMap.crear({
+    el: '#mapa',
+    titulo: 'Dónde se concentra España por Ceuta',
+    entradilla: 'Convocatorias del miércoles 2 de septiembre, Día de Ceuta. Coinciden actos institucionales impulsados por la FEMP, convocatorias ciudadanas y llamamientos de partidos, con lugares distintos dentro de una misma ciudad.',
+    fuente: { texto: 'FEMP, ayuntamientos y convocantes' },
+    actualizado: '2026-09-01T09:00:00+02:00',
+    nota: 'Selección de convocatorias verificadas una por una. No es un listado completo: la plataforma Por Ceuta y la FEMP contabilizan más de 260 municipios adheridos. Los puntos señalan la ciudad, no la ubicación exacta del acto, que figura en el detalle.',
+
+    leyenda: {
+      titulo: 'Hora de inicio',
+      items: [
+        { id: '20:00', etiqueta: 'A las 20:00',                     color: ROJO, filtrable: true },
+        { id: '19:00', etiqueta: 'A las 19:00 (Canarias y Ceuta)',  color: ROJO, forma: 'hueco', filtrable: true }
+      ],
+      nota: 'El círculo mayor indica dos convocatorias distintas en la misma ciudad'
+    },
+
+    // Un solo color: distinguir por relleno y tamaño evita que el mapa
+    // se lea como un reparto de siglas políticas.
+    punto: function (f, ll) {
+      var p = f.properties;
+      var doble = p.valor > 1;
+      var lleno = p.hora === '20:00';
+      return L.circleMarker(ll, {
+        pane: 'lrPuntos',
+        radius: doble ? 8.5 : 6,
+        weight: lleno ? 1.4 : 2.6,
+        color: lleno ? PAPEL : ROJO,
+        opacity: 1,
+        fillColor: lleno ? ROJO : PAPEL,
+        fillOpacity: 1
+      });
+    },
+
+    rotulo: function (f) { return f.properties.titulo; },
+
+    etiquetaFlotante: function (f) {
+      var p = f.properties;
+      return p.titulo + ' · ' + p.hora + (p.valor > 1 ? ' · 2 convocatorias' : '');
+    },
+
+    alSeleccionar: function (f) {
+      var p = f.properties;
+      var lista = p.actos.map(function (a) {
+        var h = '<div class="acto">';
+        h += '<span class="acto__hora">' + a.hora + '</span>';
+        h += '<span class="acto__lugar">' + a.lugar + '</span>';
+        h += '<span class="acto__quien">' + a.convocante + '</span>';
+        if (a.nota) h += '<span class="acto__nota">' + a.nota + '</span>';
+        h += '<span class="acto__tipo">' + ({
+          institucional: 'Convocatoria institucional',
+          ciudadana: 'Convocatoria ciudadana',
+          partido: 'Convocatoria de partido'
+        })[a.tipo] + '</span>';
+        return h + '</div>';
+      }).join('');
+
+      return {
+        titulo: p.titulo,
+        texto: p.valor > 1
+          ? 'Dos convocatorias distintas, a la misma hora y en lugares diferentes.'
+          : '',
+        html: lista,
+        enlace: null
+      };
+    }
+  });
+
+  mapa.on('listo', function () {
+    mapa.cargar('datos/concentraciones-2-sep.json');
+  });
+
+  // Medición: un único punto de enganche para todos los mapas.
+  document.addEventListener('lrmap:seleccion', function (e) {
+    if (!window.dataLayer) return;
+    dataLayer.push({
+      event: 'mapa_interaccion',
+      mapa_id: 'concentraciones-ceuta-2sep',
+      elemento: e.detail.properties.id
+    });
+  });
+</script>
+</body>
+</html>
