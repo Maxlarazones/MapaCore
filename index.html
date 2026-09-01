@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Concentraciones por Ceuta del 2 de septiembre — La Razón</title>
-<meta name="description" content="Mapa de las concentraciones convocadas el 2 de septiembre, Día de Ceuta: ciudad, hora, lugar y quién convoca.">
+<meta name="description" content="Mapa y listado de las concentraciones convocadas el 2 de septiembre, Día de Ceuta: ciudad, hora, lugar y quién convoca.">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,14 +17,19 @@
 <style>
   html, body { margin: 0; background: transparent; font-family: Archivo, system-ui, sans-serif; }
 
-  /* --- Marcador: círculo + rótulo. Todo local a este mapa. --- */
+  /* En este mapa los únicos rótulos son las ciudades convocantes:
+     los nombres de comunidad y provincia sobran y se pisaban. */
+  .lrmap__toponimo--region,
+  .lrmap__toponimo--provincia,
+  .lrmap__toponimo--ciudad { display: none; }
+
+  /* --- Marcador: círculo + nombre --- */
   .cc { position: relative; width: 26px; height: 26px; --r: 6px; }
   .cc--doble { --r: 8.5px; }
   .cc__punto {
     position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-    width: calc(var(--r) * 2); height: calc(var(--r) * 2);
+    width: calc(var(--r) * 2); height: calc(var(--r) * 2); box-sizing: border-box;
     border-radius: 50%; background: #c5161d; border: 1.5px solid #fbfaf8;
-    box-sizing: border-box;
   }
   .cc--hueco .cc__punto { background: #fbfaf8; border: 2.5px solid #c5161d; }
   .cc__nombre {
@@ -37,12 +42,41 @@
   .cc--izq    .cc__nombre { right: calc(50% + var(--r) + 4px); top: 50%; transform: translateY(-50%); }
   .cc--der    .cc__nombre { left: calc(50% + var(--r) + 4px); top: 50%; transform: translateY(-50%); }
 
-  /* Signo hueco en la leyenda, sin tocar el CSS del núcleo */
   .lrmap__clave-lista li[data-id="19:00"] .lrmap__signo {
     background: #fbfaf8; box-shadow: inset 0 0 0 2px #c5161d;
   }
 
-  /* --- Lista de convocatorias dentro de la ficha --- */
+  /* --- Listado bajo el mapa --- */
+  .lista { border-top: 1px solid #e0dbd2; padding: 14px 16px 18px; }
+  .lista__titulo {
+    margin: 0 0 2px; font-family: Fraunces, Georgia, serif;
+    font-size: 17px; font-weight: 600; letter-spacing: -.01em; color: #1b1a18;
+  }
+  .lista__cuenta { margin: 0 0 12px; font-size: 12px; color: #857f76; }
+  .lista__filas { display: grid; gap: 1px; background: #e6e2da; border: 1px solid #e6e2da; }
+  .fila {
+    all: unset; box-sizing: border-box; display: block; cursor: pointer;
+    background: #fbfaf8; padding: 10px 12px; width: 100%;
+  }
+  .fila:hover { background: #f4f1eb; }
+  .fila:focus-visible { outline: 2px solid #c5161d; outline-offset: -2px; }
+  .fila__cabeza { display: flex; align-items: baseline; gap: 9px; }
+  .fila__ciudad { font-size: 14px; font-weight: 600; color: #1b1a18; }
+  .fila__hora {
+    font-size: 12px; font-weight: 600; color: #c5161d;
+    font-variant-numeric: tabular-nums; margin-left: auto; flex: none;
+  }
+  .fila__acto { margin-top: 5px; font-size: 12.5px; color: #55524c; line-height: 1.4; }
+  .fila__acto + .fila__acto { padding-top: 5px; border-top: 1px dotted #ddd8ce; }
+  .fila__lugar { color: #1b1a18; }
+  .fila__quien { color: #857f76; }
+  .fila__aviso { display: block; margin-top: 3px; font-size: 11.5px; color: #857f76; }
+
+  @media (min-width: 620px) {
+    .lista__filas { grid-template-columns: 1fr 1fr; }
+  }
+
+  /* --- Ficha --- */
   .acto { padding: 9px 0; border-top: 1px solid #e6e2da; }
   .acto:first-child { border-top: 0; padding-top: 2px; }
   .acto__hora { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 13px; margin-right: 7px; }
@@ -53,10 +87,6 @@
     display: inline-block; margin-top: 5px; padding: 1px 6px;
     font-size: 10.5px; border: 1px solid #d8d2c7; color: #55524c;
   }
-
-  [data-tema="noche"] .cc__nombre { color: #f3f1ed; text-shadow: 0 0 3px #1a1c1d, 0 0 4px #1a1c1d; }
-  [data-tema="noche"] .acto { border-color: #303436; }
-  [data-tema="noche"] .acto__quien { color: #b6b2ab; }
 </style>
 </head>
 <body>
@@ -67,14 +97,13 @@
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="lrmap.js"></script>
 <script>
-/* ---------------------------------------------------------------------------
-   Datos. Para actualizar el mapa se toca SOLO esta lista.
-   corto  = texto junto al punto;  pos = dónde se coloca (abajo|arriba|izq|der)
-   --------------------------------------------------------------------------- */
+/* ===========================================================================
+   DATOS. Para actualizar el mapa se toca SOLO esta lista.
+   corto = texto junto al punto;  pos = dónde se coloca (abajo|arriba|izq|der)
+   =========================================================================== */
 var CIUDADES = [
-  { id:'madrid', nombre:'Madrid', corto:'Madrid', pos:'izq', lat:40.4180, lon:-3.7010, hora:'20:00', actos:[
-      { hora:'20:00', lugar:'Congreso de los Diputados', quien:'Convocatoria ciudadana «Por Ceuta»', tipo:'ciudadana' },
-      { hora:'20:00', lugar:'Plaza de Cibeles', quien:'Ayuntamiento de Madrid / FEMP', tipo:'institucional' } ] },
+  { id:'coruna', nombre:'A Coruña', corto:'A Coruña', pos:'abajo', lat:43.3623, lon:-8.4115, hora:'20:00', actos:[
+      { hora:'20:00', lugar:'Plaza de María Pita', quien:'Convocatoria municipal', tipo:'institucional' } ] },
 
   { id:'barcelona', nombre:'Barcelona', corto:'Barcelona', pos:'der', lat:41.3850, lon:2.1734, hora:'20:00', actos:[
       { hora:'20:00', lugar:'Plaça de Sant Jaume', quien:'PP de Barcelona', tipo:'partido' },
@@ -84,14 +113,11 @@ var CIUDADES = [
       { hora:'19:00', lugar:'De las Murallas Reales a la Plaza de los Reyes', quien:'FPAV y Foro Ceuta Siglo XXI', tipo:'ciudadana',
         nota:'Marcha con lectura de manifiesto al final del recorrido' } ] },
 
-  { id:'sevilla', nombre:'Sevilla', corto:'Sevilla', pos:'abajo', lat:37.3891, lon:-5.9845, hora:'20:00', actos:[
-      { hora:'20:00', lugar:'Plaza Nueva', quien:'Ayuntamiento / FEMP', tipo:'institucional' } ] },
-
-  { id:'malaga', nombre:'Málaga', corto:'Málaga', pos:'abajo', lat:36.7213, lon:-4.4214, hora:'20:00', actos:[
-      { hora:'20:00', lugar:'Puerta del Ayuntamiento, avenida de Cervantes 4', quien:'Ayuntamiento', tipo:'institucional' } ] },
-
   { id:'cordoba', nombre:'Córdoba', corto:'Córdoba', pos:'izq', lat:37.8882, lon:-4.7794, hora:'20:00', actos:[
       { hora:'20:00', lugar:'Ayuntamiento, calle Capitulares', quien:'Ayuntamiento / FEMP', tipo:'institucional' } ] },
+
+  { id:'guadalajara', nombre:'Guadalajara', corto:'Guadalajara', pos:'der', lat:40.6288, lon:-3.1613, hora:'20:00', actos:[
+      { hora:'20:00', lugar:'Plaza Mayor', quien:'Ayuntamiento', tipo:'institucional' } ] },
 
   { id:'huelva', nombre:'Huelva', corto:'Huelva', pos:'izq', lat:37.2614, lon:-6.9447, hora:'20:00', actos:[
       { hora:'20:00', lugar:'Puerta del Ayuntamiento', quien:'Ayuntamiento / FEMP', tipo:'institucional' } ] },
@@ -100,29 +126,33 @@ var CIUDADES = [
       { hora:'20:00', lugar:'Plaza de las Batallas', quien:'Convocatoria ciudadana', tipo:'ciudadana',
         nota:'Acto independiente del convocado por el Ayuntamiento' } ] },
 
-  { id:'valencia', nombre:'València', corto:'València', pos:'der', lat:39.4699, lon:-0.3763, hora:'20:00', actos:[
-      { hora:'20:00', lugar:'Plaza del Ayuntamiento', quien:'Ayuntamiento / FEMP', tipo:'institucional' } ] },
-
-  { id:'zaragoza', nombre:'Zaragoza', corto:'Zaragoza', pos:'arriba', lat:41.6488, lon:-0.8891, hora:'20:00', actos:[
-      { hora:'20:00', lugar:'Plaza del Pilar', quien:'Ayuntamiento', tipo:'institucional' } ] },
-
-  { id:'guadalajara', nombre:'Guadalajara', corto:'Guadalajara', pos:'der', lat:40.6288, lon:-3.1613, hora:'20:00', actos:[
-      { hora:'20:00', lugar:'Plaza Mayor', quien:'Ayuntamiento', tipo:'institucional' } ] },
-
-  { id:'coruna', nombre:'A Coruña', corto:'A Coruña', pos:'abajo', lat:43.3623, lon:-8.4115, hora:'20:00', actos:[
-      { hora:'20:00', lugar:'Plaza de María Pita', quien:'Convocatoria municipal', tipo:'institucional' } ] },
-
   { id:'laspalmas', nombre:'Las Palmas de Gran Canaria', corto:'Las Palmas', pos:'der', lat:28.1235, lon:-15.4363, hora:'19:00', actos:[
       { hora:'19:00', lugar:'Plaza de Santa Ana', quien:'Convocatoria local', tipo:'institucional' } ] },
 
-  { id:'telde', nombre:'Telde', corto:'Telde', pos:'abajo', lat:27.9985, lon:-15.4167, hora:'19:00', actos:[
-      { hora:'19:00', lugar:'Plaza de San Juan', quien:'Convocatoria local', tipo:'institucional' } ] },
+  { id:'madrid', nombre:'Madrid', corto:'Madrid', pos:'izq', lat:40.4180, lon:-3.7010, hora:'20:00', actos:[
+      { hora:'20:00', lugar:'Congreso de los Diputados', quien:'Convocatoria ciudadana «Por Ceuta»', tipo:'ciudadana' },
+      { hora:'20:00', lugar:'Plaza de Cibeles', quien:'Ayuntamiento de Madrid / FEMP', tipo:'institucional' } ] },
+
+  { id:'malaga', nombre:'Málaga', corto:'Málaga', pos:'abajo', lat:36.7213, lon:-4.4214, hora:'20:00', actos:[
+      { hora:'20:00', lugar:'Puerta del Ayuntamiento, avenida de Cervantes 4', quien:'Ayuntamiento', tipo:'institucional' } ] },
 
   { id:'puertorosario', nombre:'Puerto del Rosario', corto:'Puerto del Rosario', pos:'abajo', lat:28.5004, lon:-13.8627, hora:'19:00', actos:[
       { hora:'19:00', lugar:'Junto al Ayuntamiento', quien:'Convocatoria local', tipo:'institucional' } ] },
 
   { id:'tenerife', nombre:'Santa Cruz de Tenerife', corto:'S. C. de Tenerife', pos:'izq', lat:28.4636, lon:-16.2518, hora:'19:00', actos:[
-      { hora:'19:00', lugar:'Frente al Ayuntamiento', quien:'Convocatoria institucional', tipo:'institucional' } ] }
+      { hora:'19:00', lugar:'Frente al Ayuntamiento', quien:'Convocatoria institucional', tipo:'institucional' } ] },
+
+  { id:'sevilla', nombre:'Sevilla', corto:'Sevilla', pos:'abajo', lat:37.3891, lon:-5.9845, hora:'20:00', actos:[
+      { hora:'20:00', lugar:'Plaza Nueva', quien:'Ayuntamiento / FEMP', tipo:'institucional' } ] },
+
+  { id:'telde', nombre:'Telde', corto:'Telde', pos:'abajo', lat:27.9985, lon:-15.4167, hora:'19:00', actos:[
+      { hora:'19:00', lugar:'Plaza de San Juan', quien:'Convocatoria local', tipo:'institucional' } ] },
+
+  { id:'valencia', nombre:'València', corto:'València', pos:'der', lat:39.4699, lon:-0.3763, hora:'20:00', actos:[
+      { hora:'20:00', lugar:'Plaza del Ayuntamiento', quien:'Ayuntamiento / FEMP', tipo:'institucional' } ] },
+
+  { id:'zaragoza', nombre:'Zaragoza', corto:'Zaragoza', pos:'arriba', lat:41.6488, lon:-0.8891, hora:'20:00', actos:[
+      { hora:'20:00', lugar:'Plaza del Pilar', quien:'Ayuntamiento', tipo:'institucional' } ] }
 ];
 
 var ETIQUETA_TIPO = {
@@ -131,7 +161,13 @@ var ETIQUETA_TIPO = {
   partido: 'Convocatoria de partido'
 };
 
-/* --------------------------------------------------------------------------- */
+/* =========================================================================== */
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c];
+  });
+}
 
 var geojson = {
   type: 'FeatureCollection',
@@ -147,13 +183,15 @@ var geojson = {
   })
 };
 
+var totalActos = CIUDADES.reduce(function (n, c) { return n + c.actos.length; }, 0);
+
 var mapa = LRMap.crear({
   el: '#mapa',
   titulo: 'Dónde se concentra España por Ceuta',
   entradilla: 'Convocatorias del miércoles 2 de septiembre, Día de Ceuta. Coinciden actos institucionales impulsados por la FEMP, convocatorias ciudadanas y llamamientos de partidos, con lugares distintos dentro de una misma ciudad.',
   fuente: { texto: 'FEMP, ayuntamientos y convocantes' },
   actualizado: '2026-09-01T09:00:00+02:00',
-  nota: 'Selección de convocatorias verificadas una por una. No es un listado completo: la plataforma Por Ceuta y la FEMP contabilizan más de 260 municipios adheridos. Los puntos señalan la ciudad; el lugar exacto figura en el detalle.',
+  nota: 'Selección de convocatorias verificadas una por una. No es un listado completo: la plataforma Por Ceuta y la FEMP contabilizan más de 260 municipios adheridos. Los puntos señalan la ciudad; el lugar exacto figura en el listado.',
 
   leyenda: {
     titulo: 'Hora de inicio',
@@ -164,8 +202,8 @@ var mapa = LRMap.crear({
     nota: 'El círculo mayor indica dos convocatorias distintas en la misma ciudad'
   },
 
-  // Marcador propio: círculo + nombre. Un solo color; distinguimos por relleno
-  // y tamaño, para que el mapa no se lea como un reparto de siglas políticas.
+  // Un solo color: distinguimos por relleno y tamaño, para que el mapa no se
+  // lea como un reparto de siglas políticas.
   punto: function (f, ll) {
     var p = f.properties;
     var clases = ['cc', 'cc--' + p.pos];
@@ -173,15 +211,11 @@ var mapa = LRMap.crear({
     if (p.hora === '19:00') clases.push('cc--hueco');
     return L.marker(ll, {
       icon: L.divIcon({
-        className: '',
-        iconSize: [26, 26],
-        iconAnchor: [13, 13],
-        html: '<div class="' + clases.join(' ') + '">' +
-              '<b class="cc__punto"></b>' +
-              '<span class="cc__nombre">' + p.corto + '</span></div>'
+        className: '', iconSize: [26, 26], iconAnchor: [13, 13],
+        html: '<div class="' + clases.join(' ') + '"><b class="cc__punto"></b>' +
+              '<span class="cc__nombre">' + esc(p.corto) + '</span></div>'
       }),
-      keyboard: true,
-      title: p.titulo
+      keyboard: true, title: p.titulo
     });
   },
 
@@ -194,10 +228,10 @@ var mapa = LRMap.crear({
     var p = f.properties;
     var lista = p.actos.map(function (a) {
       var h = '<div class="acto">';
-      h += '<span class="acto__hora">' + a.hora + '</span>';
-      h += '<span class="acto__lugar">' + a.lugar + '</span>';
-      h += '<span class="acto__quien">' + a.quien + '</span>';
-      if (a.nota) h += '<span class="acto__nota">' + a.nota + '</span>';
+      h += '<span class="acto__hora">' + esc(a.hora) + '</span>';
+      h += '<span class="acto__lugar">' + esc(a.lugar) + '</span>';
+      h += '<span class="acto__quien">' + esc(a.quien) + '</span>';
+      if (a.nota) h += '<span class="acto__nota">' + esc(a.nota) + '</span>';
       h += '<span class="acto__tipo">' + ETIQUETA_TIPO[a.tipo] + '</span>';
       return h + '</div>';
     }).join('');
@@ -209,7 +243,62 @@ var mapa = LRMap.crear({
   }
 });
 
-mapa.on('listo', function () { mapa.setDatos(geojson); });
+mapa.on('listo', function () {
+  mapa.setDatos(geojson);
+  montarListado();
+});
+
+/* ---------------------------------------------------------------------------
+   Listado bajo el mapa. Va dentro del contenedor para que el autoajuste de
+   altura del iframe lo tenga en cuenta.
+   --------------------------------------------------------------------------- */
+function montarListado() {
+  if (document.querySelector('.lista')) return;
+
+  var filas = CIUDADES.map(function (c) {
+    var actos = c.actos.map(function (a) {
+      var h = '<span class="fila__acto"><span class="fila__lugar">' + esc(a.lugar) + '</span> · ' +
+              '<span class="fila__quien">' + esc(a.quien) + '</span>';
+      if (a.nota) h += '<span class="fila__aviso">' + esc(a.nota) + '</span>';
+      return h + '</span>';
+    }).join('');
+    return '<button class="fila" type="button" data-id="' + c.id + '">' +
+             '<span class="fila__cabeza">' +
+               '<span class="fila__ciudad">' + esc(c.nombre) + '</span>' +
+               '<span class="fila__hora">' + esc(c.hora) + '</span>' +
+             '</span>' + actos +
+           '</button>';
+  }).join('');
+
+  var seccion = document.createElement('section');
+  seccion.className = 'lista';
+  seccion.innerHTML =
+    '<h3 class="lista__titulo">Dónde y a qué hora</h3>' +
+    '<p class="lista__cuenta">' + CIUDADES.length + ' ciudades · ' + totalActos + ' convocatorias</p>' +
+    '<div class="lista__filas">' + filas + '</div>';
+  document.getElementById('mapa').appendChild(seccion);
+
+  var porId = {};
+  geojson.features.forEach(function (f) { porId[f.properties.id] = f; });
+
+  Array.prototype.forEach.call(seccion.querySelectorAll('.fila'), function (b) {
+    b.addEventListener('click', function () {
+      var c = null;
+      for (var i = 0; i < CIUDADES.length; i++) {
+        if (CIUDADES[i].id === b.getAttribute('data-id')) { c = CIUDADES[i]; break; }
+      }
+      if (!c) return;
+      // Canarias vive en el recuadro: hay que trasladar la coordenada igual
+      // que hace el mapa con los datos.
+      var punto = LRMap.moverCanarias({
+        type: 'Feature', properties: {},
+        geometry: { type: 'Point', coordinates: [c.lon, c.lat] }
+      }).geometry.coordinates;
+      mapa.mapa.flyTo([punto[1], punto[0]], 8, { duration: 0.7 });
+      mapa.elegir(porId[c.id]);
+    });
+  });
+}
 
 document.addEventListener('lrmap:seleccion', function (e) {
   if (!window.dataLayer) return;
